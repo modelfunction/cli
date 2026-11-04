@@ -1,0 +1,44 @@
+[
+  {
+    "name": "tool-pair",
+    "manifest": {
+      "name": "tavily_search",
+      "description": "联网搜索实时网页信息，返回标题、摘要与链接",
+      "parameters": {
+        "type": "object",
+        "properties": { "query": { "type": "string", "description": "搜索词" } },
+        "required": ["query"]
+      }
+    },
+    "installed": {
+      "tools": [
+        {
+          "name": "google_search",
+          "description": "使用谷歌检索网页内容，返回搜索结果列表",
+          "parameters": {
+            "type": "object",
+            "properties": { "query": { "type": "string", "description": "搜索词" } },
+            "required": ["query"]
+          }
+        }
+      ],
+      "skills": []
+    }
+  },
+  {
+    "name": "skill-sibling",
+    "manifest": {
+      "name": "feishu-wiki",
+      "description": "在飞书知识库中创建、编辑和读取知识库页面，适合团队沉淀文档"
+    },
+    "installed": {
+      "tools": [],
+      "skills": [
+        {
+          "name": "feishu-doc",
+          "description": "在飞书云文档中创建、编辑和读取云文档页面，适合团队协作文档"
+        }
+      ]
+    }
+  }
+]

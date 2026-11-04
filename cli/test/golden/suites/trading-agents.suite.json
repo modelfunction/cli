@@ -1,0 +1,269 @@
+{
+  "name": "TradingAgents-main-draft",
+  "description": "由 mf scan 生成。请人工确认工具描述与参数，并补充 cases 后再运行 mf eval。",
+  "tools": [
+    {
+      "name": "get_stock_data",
+      "description": "Retrieve stock price data (OHLCV) for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "ticker symbol of the company"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "Start date in yyyy-mm-dd format"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "End date in yyyy-mm-dd format"
+          }
+        },
+        "required": [
+          "symbol",
+          "start_date",
+          "end_date"
+        ]
+      }
+    },
+    {
+      "name": "get_fundamentals",
+      "description": "Retrieve comprehensive fundamental data for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "ticker symbol"
+          },
+          "curr_date": {
+            "type": "string",
+            "description": "current date you are trading at, yyyy-mm-dd"
+          }
+        },
+        "required": [
+          "ticker",
+          "curr_date"
+        ]
+      }
+    },
+    {
+      "name": "get_balance_sheet",
+      "description": "Retrieve balance sheet data for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "ticker symbol"
+          },
+          "freq": {
+            "type": "string",
+            "description": "reporting frequency: annual/quarterly"
+          },
+          "curr_date": {
+            "type": "string",
+            "description": "current date you are trading at, yyyy-mm-dd"
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "name": "get_cashflow",
+      "description": "Retrieve cash flow statement data for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "ticker symbol"
+          },
+          "freq": {
+            "type": "string",
+            "description": "reporting frequency: annual/quarterly"
+          },
+          "curr_date": {
+            "type": "string",
+            "description": "current date you are trading at, yyyy-mm-dd"
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "name": "get_income_statement",
+      "description": "Retrieve income statement data for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "ticker symbol"
+          },
+          "freq": {
+            "type": "string",
+            "description": "reporting frequency: annual/quarterly"
+          },
+          "curr_date": {
+            "type": "string",
+            "description": "current date you are trading at, yyyy-mm-dd"
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "name": "get_verified_market_snapshot",
+      "description": "Deterministic verification snapshot for exact market-data claims.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "ticker symbol of the company"
+          },
+          "curr_date": {
+            "type": "string",
+            "description": "the current trading date, YYYY-mm-dd"
+          },
+          "look_back_days": {
+            "type": "number",
+            "description": "number of recent trading rows to include for sanity-checking"
+          }
+        },
+        "required": [
+          "symbol",
+          "curr_date"
+        ]
+      }
+    },
+    {
+      "name": "get_news",
+      "description": "Retrieve news data for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker symbol"
+          },
+          "start_date": {
+            "type": "string",
+            "description": "Start date in yyyy-mm-dd format"
+          },
+          "end_date": {
+            "type": "string",
+            "description": "End date in yyyy-mm-dd format"
+          }
+        },
+        "required": [
+          "ticker",
+          "start_date",
+          "end_date"
+        ]
+      }
+    },
+    {
+      "name": "get_global_news",
+      "description": "Retrieve global news data.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "curr_date": {
+            "type": "string",
+            "description": "Current date in yyyy-mm-dd format"
+          },
+          "look_back_days": {
+            "type": "string",
+            "description": "Days to look back; omit to use the configured default"
+          },
+          "limit": {
+            "type": "string",
+            "description": "Max articles to return; omit to use the configured default"
+          }
+        },
+        "required": [
+          "curr_date"
+        ]
+      }
+    },
+    {
+      "name": "get_insider_transactions",
+      "description": "Retrieve insider transaction information about a company.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "ticker symbol"
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "name": "get_indicators",
+      "description": "Retrieve a single technical indicator for a given ticker symbol.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "ticker symbol of the company"
+          },
+          "indicator": {
+            "type": "string",
+            "description": "technical indicator to get the analysis and report of"
+          },
+          "curr_date": {
+            "type": "string",
+            "description": "The current trading date you are trading on, YYYY-mm-dd"
+          },
+          "look_back_days": {
+            "type": "number",
+            "description": "how many days to look back"
+          }
+        },
+        "required": [
+          "symbol",
+          "indicator",
+          "curr_date"
+        ]
+      }
+    }
+  ],
+  "cases": [],
+  "profiles": {
+    "core_stock_tools": [
+      "get_stock_data"
+    ],
+    "fundamental_data_tools": [
+      "get_fundamentals",
+      "get_balance_sheet",
+      "get_cashflow",
+      "get_income_statement"
+    ],
+    "market_data_validation_tools": [
+      "get_verified_market_snapshot"
+    ],
+    "news_data_tools": [
+      "get_news",
+      "get_global_news",
+      "get_insider_transactions"
+    ],
+    "technical_indicators_tools": [
+      "get_indicators"
+    ]
+  }
+}

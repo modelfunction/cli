@@ -1,0 +1,299 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { lintSuite, formatLint } from "../lib/lint.js";
+
+test("pairScope reports only pairs that touch the new capabilities", () => {
+  const suite = {
+    tools: [
+      { name: "search_docs", description: "Search documentation pages by keyword." },
+      { name: "search_wiki", description: "Search wiki pages by keyword." },
+      { name: "send_email", description: "Send an email message to one recipient." }
+    ]
+  };
+  const pairFindings = (report) => report.findings.filter((finding) => finding.pair);
+  assert.equal(pairFindings(lintSuite(suite)).length, 1);
+  assert.equal(pairFindings(lintSuite(suite, { pairScope: new Set(["send_email"]) })).length, 0);
+  assert.equal(pairFindings(lintSuite(suite, { pairScope: new Set(["search_docs"]) })).length, 1);
+});
+
+test("lint flags missing description, generic name and bad params", () => {
+  const suite = {
+    tools: [
+      { name: "run", description: "", parameters: { type: "object", properties: {} } },
+      {
+        name: "BadName",
+        description: "处理东西",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            payload: { type: "object" },
+            ids: { type: "array" }
+          },
+          required: ["a", "b", "c", "d", "e", "f"]
+        }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  const codes = report.findings.map((finding) => finding.code);
+  assert.ok(codes.includes("desc-missing"));
+  assert.ok(codes.includes("name-generic"));
+  assert.ok(codes.includes("name-style"));
+  assert.ok(codes.includes("desc-short"));
+  assert.ok(codes.includes("desc-no-when"));
+  assert.ok(codes.includes("param-desc-missing"));
+  assert.ok(codes.includes("param-object-no-props"));
+  assert.ok(codes.includes("param-array-no-items"));
+  assert.ok(codes.includes("required-many"));
+  assert.ok(report.counts.error >= 1);
+  assert.match(formatLint(report), /desc-missing/);
+});
+
+test("lint accepts a clean tool definition", () => {
+  const suite = {
+    tools: [
+      {
+        name: "score_resume",
+        description: "当用户需要评估简历与岗位描述匹配度时使用，返回 0-100 分和缺失关键词。",
+        parameters: {
+          type: "object",
+          properties: {
+            resume: { type: "string", description: "候选人简历文本" },
+            jd: { type: "string", description: "职位描述文本" }
+          },
+          required: ["resume", "jd"]
+        }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  assert.deepEqual(report.findings, []);
+  assert.equal(formatLint(report), "tools: 1  findings: 0（error 0 / warn 0 / info 0）\n没有发现问题");
+});
+
+test("lint reports overlapping tool descriptions that lack boundaries", () => {
+  const suite = {
+    tools: [
+      {
+        name: "search_docs",
+        description: "用于在技术文档库中搜索相关段落，返回匹配的文档片段与链接。",
+        parameters: { type: "object", properties: { query: { type: "string", description: "搜索词" } } }
+      },
+      {
+        name: "find_docs",
+        description: "用于在技术文档库中搜索相关段落，返回匹配的文档片段与链接。",
+        parameters: { type: "object", properties: { query: { type: "string", description: "搜索词" } } }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  const noBoundary = report.findings.filter((finding) => finding.code === "pair-no-boundary");
+  assert.equal(noBoundary.length, 1);
+  assert.match(noBoundary[0].message, /相似度/);
+  assert.deepEqual(noBoundary[0].pair, ["search_docs", "find_docs"]);
+  assert.equal(report.findings.filter((finding) => finding.code === "pair-overlap").length, 0);
+});
+
+test("lint reports confusable pairs split across profiles as merge hazards", () => {
+  const tools = [
+    {
+      name: "search_docs",
+      description: "用于在技术文档库中搜索相关段落，返回匹配的文档片段与链接。",
+      parameters: { type: "object", properties: { query: { type: "string", description: "搜索词" } } }
+    },
+    {
+      name: "find_docs",
+      description: "用于在技术文档库中搜索相关段落，返回匹配的文档片段与链接。",
+      parameters: { type: "object", properties: { query: { type: "string", description: "搜索词" } } }
+    }
+  ];
+  const split = lintSuite({ tools, profiles: { web: ["search_docs"], jobs: ["find_docs"] } });
+  assert.equal(split.profilePairs.length, 1);
+  assert.deepEqual([split.profilePairs[0].a, split.profilePairs[0].b], ["jobs", "web"]);
+  assert.equal(split.profilePairs[0].pairs.length, 1);
+  assert.match(formatLint(split), /jobs × web/);
+
+  const same = lintSuite({ tools, profiles: { web: ["search_docs", "find_docs"] } });
+  assert.equal(same.profilePairs.length, 0);
+  assert.equal(lintSuite({ tools }).profilePairs.length, 0);
+});
+
+test("lint downgrades overlap to info when a boundary is declared", () => {
+  const suite = {
+    tools: [
+      {
+        name: "search_docs",
+        description: "用于在技术文档库中搜索相关段落，返回匹配的文档片段与链接。不适用于只查找单个文件路径的场景。",
+        parameters: { type: "object", properties: { query: { type: "string", description: "搜索词" } } }
+      },
+      {
+        name: "find_docs",
+        description: "用于在技术文档库中搜索相关段落，返回匹配的文档片段与链接。",
+        parameters: { type: "object", properties: { query: { type: "string", description: "搜索词" } } }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  const overlap = report.findings.filter((finding) => finding.code === "pair-overlap");
+  assert.equal(overlap.length, 1);
+  assert.equal(overlap[0].severity, "info");
+  assert.equal(report.findings.filter((finding) => finding.code === "pair-no-boundary").length, 0);
+});
+
+test("lint flags required identifiers with no documented source", () => {
+  const suite = {
+    tools: [
+      {
+        name: "file_read",
+        description: "当用户需要读取工作区中的文件时使用，返回文件内容。",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "文件路径" },
+            session_id: { type: "string", description: "会话 ID" }
+          },
+          required: ["path", "session_id"]
+        }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  const finding = report.findings.find((item) => item.code === "required-unsourced");
+  assert.ok(finding);
+  assert.equal(finding.param, "session_id");
+  assert.equal(finding.severity, "warn");
+});
+
+test("structural similarity catches different wording with the same shape", () => {
+  const tool = (name, description, properties) => ({
+    name,
+    description,
+    parameters: { type: "object", properties }
+  });
+  const tools = [
+    tool("tavily_search", "联网搜索实时信息", { query: { type: "string" }, max_results: { type: "number" } }),
+    tool("google_search", "使用谷歌检索网页内容", { query: { type: "string" }, max_results: { type: "number" } }),
+    tool("get_user", "查询用户资料", { user_id: { type: "string" } }),
+    tool("get_order", "查询订单详情", { order_id: { type: "string" } })
+  ];
+  const report = lintSuite({ tools, cases: [] });
+  const pairs = report.findings.filter((item) => item.pair).map((item) => item.pair.join("×"));
+  assert.ok(pairs.includes("tavily_search×google_search"), "same shape, different wording should pair");
+  assert.ok(!pairs.some((item) => item.includes("get_user")), "same verb but disjoint params should not pair");
+});
+
+test("identifier detection matches whole tokens, not substrings", () => {
+  const build = (name) => ({
+    tools: [
+      {
+        name: "t",
+        description: "当用户需要处理数据时使用，返回结果。",
+        parameters: {
+          type: "object",
+          required: [name],
+          properties: { [name]: { type: "string", description: "参数说明" } }
+        }
+      }
+    ]
+  });
+  const code = (name) =>
+    lintSuite(build(name)).findings.filter((item) => item.code === "required-unsourced");
+
+  assert.equal(code("request_text").length, 0, "request_text is text, not an id");
+  assert.equal(code("session_summary").length, 0, "session_summary is text, not an id");
+  assert.equal(code("request_id")[0].severity, "warn");
+  assert.equal(code("sessionId")[0].severity, "warn");
+  assert.equal(code("candidate_id")[0].severity, "info", "business ids are only a nudge");
+});
+
+test("lint accepts required identifiers when the source is documented", () => {
+  const suite = {
+    tools: [
+      {
+        name: "file_read",
+        description: "当用户需要读取工作区中的文件时使用，返回文件内容。",
+        parameters: {
+          type: "object",
+          properties: {
+            path: { type: "string", description: "文件路径" },
+            session_id: { type: "string", description: "由平台在会话开始时注入的会话 ID，模型无需生成" }
+          },
+          required: ["path", "session_id"]
+        }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  assert.equal(report.findings.filter((item) => item.code === "required-unsourced").length, 0);
+});
+
+test("lint compares skills by description and separates siblings from duplicates", () => {
+  const suite = {
+    tools: [],
+    skills: [
+      {
+        name: "gitcrawl",
+        description: "GitHub archive: issue/PR search, sync freshness, duplicate clusters, PR status, repo work."
+      },
+      {
+        name: "tag-duplicate-prs-issues",
+        description: "Search duplicate PRs/issues, group related work, sync duplicate state to GitHub."
+      },
+      {
+        name: "feishu-doc",
+        description: "Feishu document read/write operations. Activate when user mentions Feishu docs, cloud docs, or docx links."
+      },
+      {
+        name: "feishu-wiki",
+        description: "Feishu knowledge base navigation. Activate when user mentions knowledge base, wiki, or wiki links."
+      },
+      { name: "brief", description: "Short." }
+    ]
+  };
+  const report = lintSuite(suite);
+  const skillFindings = report.findings.filter((item) => item.kind === "skill");
+  const codes = skillFindings.map((item) => item.code);
+  assert.equal(report.skills, 5);
+  assert.ok(codes.includes("skill-desc-short"));
+  assert.ok(codes.includes("skill-pair-no-boundary"), "two skills with the same job should warn");
+  assert.ok(codes.includes("skill-pair-sibling"), "same-vendor siblings are a hint, not a warning");
+  const dup = skillFindings.find((item) => item.code === "skill-pair-no-boundary");
+  assert.deepEqual(dup.pair.sort(), ["gitcrawl", "tag-duplicate-prs-issues"]);
+});
+
+test("formatLint folds a repeated rule into one block", () => {
+  const tools = Array.from({ length: 5 }, (_, index) => ({
+    name: `worker_${index}`,
+    description: "短",
+    parameters: { type: "object", properties: {} }
+  }));
+  const text = formatLint(lintSuite({ tools }));
+  assert.match(text, /重复问题/);
+  assert.match(text, /desc-no-when × 5/);
+  assert.match(text, /逐条:/);
+});
+
+test("runtime descriptions are informational and name style is info", () => {
+  const suite = {
+    tools: [
+      {
+        name: "ConfigTool",
+        description: "",
+        descriptionSource: "runtime",
+        parameters: {
+          type: "object",
+          properties: { setting: { type: "string", description: "键" } }
+        }
+      }
+    ]
+  };
+  const report = lintSuite(suite);
+  const codes = report.findings.map((finding) => finding.code);
+  assert.ok(codes.includes("desc-runtime"));
+  assert.ok(!codes.includes("desc-missing"));
+  assert.ok(!codes.includes("desc-no-when"));
+  const nameStyle = report.findings.find((finding) => finding.code === "name-style");
+  assert.equal(nameStyle.severity, "info");
+  assert.deepEqual(report.counts, { error: 0, warn: 0, info: 2 });
+});

@@ -1,0 +1,16 @@
+{
+  "name": "modelfunction-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Runnable demo function + MCP server for ModelFunction validation",
+  "scripts": {
+    "start": "node server.js",
+    "mcp": "node mcp-server.js",
+    "test": "node test-client.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  }
+}

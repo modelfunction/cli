@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ModelFunction — 给 Agent 工具层加一道质量门禁</title>
+    <meta
+      name="description"
+      content="本地 CLI：自动扫描 function / OpenAPI / MCP / SKILL.md，静态检查工具与 skill 的描述、参数和边界；安装时毫秒级门禁，需要证据时再跑真实模型评分卡。"
+    />
+    <meta name="theme-color" content="#07070c" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ModelFunction — 给 Agent 工具层加一道质量门禁" />
+    <meta
+      property="og:description"
+      content="扫描工具与 skill → 静态体检与安装门禁 → 真实模型评分卡。本地运行，零上传，MIT 开源。"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%237c5cff'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='monospace'%3E%C6%92%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <div class="bg-glow" aria-hidden="true"></div>
+
+    <header class="nav">
+      <div class="nav-inner">
+        <a class="brand" href="/" aria-label="ModelFunction 首页">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+            <rect x="1" y="1" width="26" height="26" rx="8" fill="url(#mf-grad)" />
+            <path
+              d="M9 20c2.2 0 3.2-1.4 3.6-3.6l1.6-8.2c.3-1.6 1.2-2.4 2.8-2.4h1.5"
+              stroke="white"
+              stroke-width="2.2"
+              stroke-linecap="round"
+            />
+            <path d="M9.5 12.5h6.5" stroke="white" stroke-width="2.2" stroke-linecap="round" />
+            <defs>
+              <linearGradient id="mf-grad" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#7c5cff" />
+                <stop offset="1" stop-color="#22d3ee" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>ModelFunction</span>
+        </a>
+
+        <nav class="nav-links" aria-label="主导航">
+          <a href="#problems">问题</a>
+          <a href="#how">怎么工作</a>
+          <a href="#features">能力</a>
+          <a href="#compare">对比</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+
+        <div class="nav-actions">
+          <a class="btn btn-ghost" href="/scorecard">看示例报告</a>
+          <a
+            class="btn btn-primary btn-sm"
+            href="https://www.npmjs.com/package/modelfunction-cli"
+            target="_blank"
+            rel="noopener"
+            >npm 包</a
+          >
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="container hero-grid">
+          <div class="hero-copy">
+            <span class="eyebrow">
+              <span class="pulse" aria-hidden="true"></span>
+              <span>0.5.4 · MIT 开源 · 本地运行零上传</span>
+            </span>
+            <h1>给 Agent 工具层，<br /><span class="grad">加一道质量门禁</span></h1>
+            <p class="hero-sub">
+              工具和 skill 越装越多，模型开始选错、或者干脆不调用。mf 扫描工具定义，静态检查描述、参数与边界；安装时毫秒级门禁，需要证据时再跑真实模型评分卡。
+            </p>
+            <div class="hero-actions">
+              <a
+                class="btn btn-primary btn-lg"
+                href="https://www.npmjs.com/package/modelfunction-cli"
+                target="_blank"
+                rel="noopener"
+                >一条命令开始</a
+              >
+              <a class="btn btn-secondary btn-lg" href="/scorecard">看示例报告</a>
+            </div>
+            <div class="hero-meta" aria-label="核心能力">
+              <span class="chip">安装门禁 · 毫秒级</span>
+              <span class="chip">静态检查 · 零模型调用</span>
+              <span class="chip">评分卡 · 可跨版本比较</span>
+              <span class="chip">干扰归因</span>
+            </div>
+          </div>
+
+          <div class="hero-visual">
+            <div class="code-window" aria-label="ModelFunction 使用示例">
+              <div class="code-top">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+                <span class="code-file">mf · 终端</span>
+              </div>
+              <pre class="code"><code><span class="c-comment"># 扫工具与 skill</span>
+<span class="c-comment">$</span> npx -y modelfunction-cli@0.5.4 scan --root ./agent
+<span class="c-str">✓</span> 12 tools · 3 skills · MCP stdio
+
+<span class="c-comment"># 静态体检：lint + 族边界 + 覆盖 + 挂载</span>
+<span class="c-comment">$</span> mf audit --suite mf.suite.json
+<span class="c-str">✓</span> 不调用模型 · 无网络 · 可转发报告
+<span class="c-key">!</span> 2 个族需要补选择边界
+
+<span class="c-comment"># 安装时门禁：一包新能力 × 已装能力</span>
+<span class="c-comment">$</span> mf check --manifests pack.json <span class="c-key">--installed</span> installed.json
+<span class="c-key">warn</span> gitcrawl × tag-duplicate-prs-issues</code></pre>
+              <div class="code-terminal" aria-hidden="true">
+                <div><span class="prompt">$</span> mf compare before.json after.json</div>
+                <div><span class="ok">✓</span> 内容指纹一致 <span class="dim">· 可直接比较</span></div>
+                <div><span class="ok">✗</span> 2 个工具被抢走 <span class="dim">resume_score → salary_band</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="compat" aria-label="适配范围">
+        <div class="container compat-inner">
+          <span class="compat-label">适配你已经在用的工具格式</span>
+          <div class="compat-list">
+            <span>function.json</span>
+            <span>OpenAPI</span>
+            <span>MCP stdio</span>
+            <span>MCP HTTP</span>
+            <span>SKILL.md</span>
+            <span>Python @tool</span>
+            <span>TS zod / TypeBox</span>
+            <span>运行时工具数组</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="problems">
+        <div class="container">
+          <div class="section-head">
+            <span class="kicker">问题</span>
+            <h2>装得越多，边界越糊</h2>
+            <p class="section-sub">
+              模型不会告诉你“我分不清这两个工具”，它只会在用户面前选错，或者干脆不调用。
+            </p>
+          </div>
+          <div class="problem-grid">
+            <article class="problem-card card">
+              <div class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
+              </div>
+              <h3>工具一多，选择就漂</h3>
+              <p>新增工具或改描述后，原来选对的工具开始被别的工具抢走，等用户报错才发现。</p>
+            </article>
+            <article class="problem-card card">
+              <div class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5 8h14"/><path d="M5 16h14"/></svg>
+              </div>
+              <h3>skill 装进来了，模型就是不用</h3>
+              <p>description 写得太泛或和已有能力重叠，模型只能靠字面猜，最后没人触发。</p>
+            </article>
+            <article class="problem-card card">
+              <div class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="12" r="4"/><path d="M12 12h9"/><path d="M17 12v3"/><path d="M20 12v2"/></svg>
+              </div>
+              <h3>必填参数模型拿不到</h3>
+              <p>会话 ID、租户 ID、任务 ID 只能由系统注入；模型不知道从哪来，可能直接放弃调用。</p>
+            </article>
+            <article class="problem-card card">
+              <div class="icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+              </div>
+              <h3>换模型靠感觉，改完没基线</h3>
+              <p>想换更便宜的模型，却不知道 function calling 会不会退化；没有复核过的用例，复现全靠回忆。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="how">
+        <div class="container">
+          <div class="section-head">
+            <span class="kicker">怎么工作</span>
+            <h2>先静态，后模型</h2>
+            <p class="section-sub">
+              安装路径上永远不调模型。静态检查零成本、毫秒级；真实模型只留给需要证据的评分卡。
+            </p>
+          </div>
+          <div class="steps">
+            <article class="step card">
+              <span class="step-num">01</span>
+              <h3>扫出工具与 skill</h3>
+              <p>读 function.json、OpenAPI、MCP 配置和 SKILL.md；需要时连 MCP server 拉真实 tools/list。</p>
+              <pre class="mini-code"><code>$ mf scan --root . --probe
+✓ 12 tools · 3 skills
+✓ mcp: filesystem (8)</code></pre>
+            </article>
+            <article class="step card">
+              <span class="step-num">02</span>
+              <h3>静态体检与安装门禁</h3>
+              <p>lint、覆盖、族内边界和挂载一次出报告；新能力可以和已装能力做增量门禁。</p>
+              <pre class="mini-code"><code>$ mf audit --suite mf.suite.json
+✓ lint · boundaries · coverage
+$ mf check --manifests pack.json
+warn: 1 对互抢</code></pre>
+            </article>
+            <article class="step card">
+              <span class="step-num">03</span>
+              <h3>需要证据时再跑评分卡</h3>
+              <p>用你或编码 Agent 写的复核用例，跑选择、参数、通过率；换版本前 compare 一次。</p>
+              <pre class="mini-code"><code>select  92%
+args    100%
+pass    92%
+p50     2.1s · ¥0.0009/次</code></pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="container">
+          <div class="section-head">
+            <span class="kicker">能力</span>
+            <h2>只做 Agent 工具这一层</h2>
+            <p class="section-sub">
+              不评测聊天、不做托管、不替你调用线上工具；把“选不选得到、填不填得对”测清楚。
+            </p>
+          </div>
+          <div class="features-grid">
+            <article class="feature card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>
+              </div>
+              <h3>工具与 skill 自动发现</h3>
+              <p>function.json、OpenAPI、MCP（stdio / streamable HTTP）、SKILL.md、Python @tool、TS zod/TypeBox，或运行时导出的数组。</p>
+            </article>
+            <article class="feature card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+              </div>
+              <h3>安装门禁 check()</h3>
+              <p>新装一个或一包能力时，与已装能力做静态比较：混淆、必填来源、schema 错误。advisory 不阻断，纯静态毫秒级。</p>
+            </article>
+            <article class="feature card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M5 8h14"/><path d="M5 16h14"/></svg>
+              </div>
+              <h3>静态 lint 与 audit</h3>
+              <p>描述、命名、必填、参数说明和工具对边界；skills 走同一套检查。重复规则自动合并，报告可直接转发。</p>
+            </article>
+            <article class="feature card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg>
+              </div>
+              <h3>多模型评分卡</h3>
+              <p>选择准确率、参数准确率、通过率，加上延迟与单次成本；同一套用例横向比，不靠榜单拍脑袋。</p>
+            </article>
+            <article class="feature card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h6"/><path d="m16 14 3 3-3 3"/></svg>
+              </div>
+              <h3>跨版本可比</h3>
+              <p>工具、用例、套件的内容指纹写进评分卡；定义变了就明确告诉你“不可直接比较”，不拿噪声当结论。</p>
+            </article>
+            <article class="feature card">
+              <div class="feature-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="m5 5 3 3"/><path d="m16 16 3 3"/><path d="m19 5-3 3"/><path d="m8 16-3 3"/></svg>
+              </div>
+              <h3>干扰归因</h3>
+              <p>混淆矩阵告诉你“被谁抢走”；留一法 ablate 告诉你这个工具是干扰、帮助还是中性。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="compare">
+        <div class="container">
+          <div class="section-head">
+            <span class="kicker">对比</span>
+            <h2>不是又一个通用评测框架</h2>
+            <p class="section-sub">
+              手写脚本能跑，通用框架能调模型；但工具定义、安装门禁、可比性和干扰归因还得自己搭。
+            </p>
+          </div>
+          <div class="table-scroll">
+            <table class="compare">
+              <thead>
+                <tr>
+                  <th>能力</th>
+                  <th>手写脚本</th>
+                  <th>通用 eval 框架</th>
+                  <th class="highlight">ModelFunction</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>工具 / skill 定义来源</td>
+                  <td class="partial">手抄</td>
+                  <td class="partial">手抄或导 JSON</td>
+                  <td class="highlight yes">自动扫描 function.json / OpenAPI / MCP / SKILL.md</td>
+                </tr>
+                <tr>
+                  <td>安装时质量门禁</td>
+                  <td class="partial">无</td>
+                  <td class="partial">通常不在安装路径</td>
+                  <td class="highlight yes">check() / checkMany，纯静态、毫秒级</td>
+                </tr>
+                <tr>
+                  <td>用例校验与复核</td>
+                  <td class="partial">自己写</td>
+                  <td class="partial">自己写</td>
+                  <td class="highlight yes">mf case add 校验 + 未复核不计分</td>
+                </tr>
+                <tr>
+                  <td>能否跨版本比较</td>
+                  <td class="partial">自己保证</td>
+                  <td class="partial">需自己保证一致</td>
+                  <td class="highlight yes">内容指纹判定可比性</td>
+                </tr>
+                <tr>
+                  <td>工具间干扰归因</td>
+                  <td class="partial">无</td>
+                  <td class="partial">需自己实现</td>
+                  <td class="highlight yes">混淆矩阵 + 留一法 ablate</td>
+                </tr>
+                <tr>
+                  <td>数据去哪了</td>
+                  <td class="yes">自己保管</td>
+                  <td class="partial">多为云端</td>
+                  <td class="highlight yes">本地运行，零上传</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="disclaimer">基于 2026-11 公开资料与产品定位的简化对比，具体能力以各家为准。</p>
+        </div>
+      </section>
+
+      <section class="section" id="faq">
+        <div class="container">
+          <div class="section-head">
+            <span class="kicker">FAQ</span>
+            <h2>你可能想问</h2>
+          </div>
+          <div class="faq">
+            <details>
+              <summary>和 promptfoo / LangSmith 这些有什么区别？</summary>
+              <p>
+                通用评测框架解决“怎么调模型、怎么写断言”；mf 只解决 Agent 工具这一层：自动发现工具定义、按工具组织用例、算选择/参数/执行、比较版本、归因工具间干扰。安装门禁是现有框架之外的一道工具质量检查。
+              </p>
+            </details>
+            <details>
+              <summary>安装门禁会不会调模型、拖慢安装？</summary>
+              <p>
+                不会。check() / checkMany 是同步纯静态函数：不调模型、不联网、不读文件、不写状态。真实 100 个能力约 40ms；输入形状不对会直接报错，不会静默放过。
+              </p>
+            </details>
+            <details>
+              <summary>会不会上传我的代码、工具定义或 Key？</summary>
+              <p>
+                CLI 全本地运行，无遥测、无服务端地址。唯一出站是你配置的模型端点和你自己的 MCP server。评分卡会把用例输入与工具描述发给被测模型供应商——敏感数据请选境内供应商或本地模型；Key 只从环境变量或本地 credentials 读取。
+              </p>
+            </details>
+            <details>
+              <summary>支持哪些模型和工具格式？</summary>
+              <p>
+                模型：任何 OpenAI 兼容接口，内置 DeepSeek、Qwen、GLM、Kimi、硅基流动、Ollama 适配。工具：function.json、OpenAPI、MCP（stdio / streamable HTTP）、SKILL.md、Python @tool、TS zod/TypeBox，也支持运行时导出的工具数组。
+              </p>
+            </details>
+            <details>
+              <summary>用例谁写？能让 Claude Code 写吗？</summary>
+              <p>
+                可以。用例由你或你的编码 Agent 撰写，<code>mf case add</code> 会校验结构与覆盖，并默认标记“未复核”；未复核用例不计入正式分。写用例的规则模板在包内 <code>skills/mf-cases/SKILL.md</code>。
+              </p>
+            </details>
+            <details>
+              <summary>现在能用吗？怎么收费？</summary>
+              <p>
+                CLI 已发布到 npm，MIT 开源、本地免费：<code>npx -y modelfunction-cli@0.5.4 --version</code>。云端历史与团队基线尚未开放；内网平台如果需要私有部署或参考集成，直接发邮件聊。
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="contact">
+        <div class="container">
+          <div class="cta-card">
+            <div class="cta-copy">
+              <span class="kicker">试用 / 合作</span>
+              <h2>拿你自己的工具集跑一次</h2>
+              <p class="section-sub">
+                我们最想看到的不是“功能列表是否完整”，而是你的真实工具集里有没有选错、有没有装了不用的 skill、有没有模型拿不到的必填参数。
+              </p>
+              <ul class="cta-list">
+                <li>发工具清单或仓库路径，我们帮你看第一份报告</li>
+                <li>内网平台：可以聊私有部署与安装链路接入</li>
+                <li>不收集数据、不要求注册、不需要提供 Key</li>
+              </ul>
+            </div>
+            <div class="cta-form">
+              <div class="success show">
+                <div class="success-icon" aria-hidden="true">ƒ</div>
+                <h3>直接发邮件</h3>
+                <p>
+                  附上工具数量、遇到的误选/不调用问题，或想要的检查方式即可。1–2 个工作日内回复。
+                </p>
+                <a class="btn btn-primary btn-block" href="mailto:hi@yunzerui.com">hi@yunzerui.com</a>
+                <a
+                  class="btn btn-secondary btn-block"
+                  href="https://www.npmjs.com/package/modelfunction-cli"
+                  target="_blank"
+                  rel="noopener"
+                  >先去 npm 看看</a
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div class="footer-brand">
+          <strong>ModelFunction</strong>
+          <span>© 2026 上海云泽睿科技有限公司 · 本地运行 · 无遥测 · MIT</span>
+        </div>
+        <nav class="footer-links" aria-label="页脚">
+          <a href="/scorecard">示例报告</a>
+          <a href="https://www.npmjs.com/package/modelfunction-cli" target="_blank" rel="noopener">npm</a>
+          <a href="mailto:hi@yunzerui.com">联系</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

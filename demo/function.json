@@ -1,0 +1,37 @@
+{
+  "name": "resume_score",
+  "description": "简历与 JD 匹配评分",
+  "version": "0.1.0",
+  "input": {
+    "type": "object",
+    "required": ["resume", "jd"],
+    "properties": {
+      "resume": {
+        "type": "string",
+        "minLength": 20,
+        "description": "候选人简历文本"
+      },
+      "jd": {
+        "type": "string",
+        "minLength": 20,
+        "description": "职位描述文本"
+      }
+    }
+  },
+  "output": {
+    "type": "object",
+    "properties": {
+      "score": { "type": "number", "minimum": 0, "maximum": 100 },
+      "reasons": { "type": "array", "items": { "type": "string" } },
+      "matched": { "type": "array", "items": { "type": "string" } },
+      "missing": { "type": "array", "items": { "type": "string" } },
+      "years": { "type": "number" }
+    }
+  },
+  "sideEffects": "none",
+  "model": "mock-keyword-v1",
+  "price": { "amount": 0.02, "currency": "CNY", "unit": "call" },
+  "mcp": true,
+  "auth": { "type": "api_key" },
+  "rateLimit": { "requests": 60, "window": "1m" }
+}

@@ -1,0 +1,586 @@
+{
+  "name": "openclaw-main-draft",
+  "description": "由 mf scan 生成。请人工确认工具描述与参数，并补充 cases 后再运行 mf eval。",
+  "tools": [
+    {
+      "name": "noop",
+      "description": "Return ok.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "bundleProbe__bundle_probe",
+      "description": "Return bundle MCP probe text.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "ping",
+      "description": "Return OK.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "conversations_list",
+      "description": "List OpenClaw channel-backed conversations available through session routes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "search": {
+            "type": "string"
+          },
+          "channel": {
+            "type": "string"
+          },
+          "includeDerivedTitles": {
+            "type": "boolean"
+          },
+          "includeLastMessage": {
+            "type": "boolean"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "conversation_get",
+      "description": "Get one OpenClaw conversation by session key.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_key": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "session_key"
+        ]
+      }
+    },
+    {
+      "name": "messages_read",
+      "description": "Read recent messages for one OpenClaw conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": [
+          "session_key"
+        ]
+      }
+    },
+    {
+      "name": "attachments_fetch",
+      "description": "List non-text attachments for a message in one OpenClaw conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": [
+          "session_key",
+          "message_id"
+        ]
+      }
+    },
+    {
+      "name": "events_poll",
+      "description": "Poll queued OpenClaw conversation events since a cursor.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "after_cursor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "session_key": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "events_wait",
+      "description": "Wait for the next queued OpenClaw conversation event.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "after_cursor": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "session_key": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300000
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "messages_send",
+      "description": "Send a message back through the same OpenClaw conversation route.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "session_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "session_key",
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "permissions_respond",
+      "description": "Allow or deny one pending OpenClaw exec or plugin approval request.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "exec",
+              "plugin"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow-once",
+              "allow-always",
+              "deny"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "decision"
+        ]
+      }
+    },
+    {
+      "name": "openclaw_agent_consult",
+      "description": "Ask the full OpenClaw agent for deeper reasoning, current information, or tool-backed help before speaking.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The concrete question or task the user asked."
+          },
+          "context": {
+            "type": "string",
+            "description": "Optional relevant context or transcript summary."
+          },
+          "responseStyle": {
+            "type": "string",
+            "description": "Optional style hint for the spoken answer."
+          }
+        },
+        "required": [
+          "question"
+        ]
+      }
+    }
+  ],
+  "cases": [],
+  "skills": [
+    {
+      "name": "blacksmith-testbox",
+      "description": "Run Blacksmith Testbox for CI-parity checks, secrets, hosted services, migrations, or builds local cannot reproduce."
+    },
+    {
+      "name": "openclaw-ghsa-maintainer",
+      "description": "Inspect, patch, validate, publish, or confirm OpenClaw GHSA security advisories and private-fork state."
+    },
+    {
+      "name": "openclaw-parallels-smoke",
+      "description": "Run, rerun, debug, or interpret OpenClaw Parallels install, onboarding, gateway smoke, and upgrade checks."
+    },
+    {
+      "name": "openclaw-pr-maintainer",
+      "description": "Review, triage, close, label, comment on, or land OpenClaw PRs/issues with maintainer evidence checks."
+    },
+    {
+      "name": "openclaw-qa-testing",
+      "description": "Run, watch, debug, extend, or explain OpenClaw qa-lab and qa-channel scenarios, artifacts, and live lanes."
+    },
+    {
+      "name": "openclaw-release-maintainer",
+      "description": "Prepare or verify OpenClaw stable/beta releases, changelogs, release notes, publish commands, and artifacts."
+    },
+    {
+      "name": "openclaw-secret-scanning-maintainer",
+      "description": "Triage, redact, clean up, and resolve OpenClaw GitHub Secret Scanning alerts in issues or PRs."
+    },
+    {
+      "name": "openclaw-test-heap-leaks",
+      "description": "Investigate OpenClaw pnpm test memory growth, Vitest OOMs, RSS spikes, and heap snapshot deltas."
+    },
+    {
+      "name": "openclaw-test-performance",
+      "description": "Benchmark, diagnose, and optimize OpenClaw test runtime, import hotspots, CPU/RSS, and slow coverage paths."
+    },
+    {
+      "name": "optimizetests",
+      "description": "Optimize OpenClaw slow tests, imports, misplaced coverage, and CI wall time without dropping coverage."
+    },
+    {
+      "name": "parallels-discord-roundtrip",
+      "description": "Run macOS Parallels smoke with Discord send, host verification, host reply, and guest readback proof."
+    },
+    {
+      "name": "security-triage",
+      "description": "Triage OpenClaw security advisories, drafts, and GHSA reports with shipped-tag and trust-model proof."
+    },
+    {
+      "name": "tag-duplicate-prs-issues",
+      "description": "Search duplicate OpenClaw PRs/issues, group related work in prtags, and sync duplicate state to GitHub."
+    },
+    {
+      "name": "acp-router",
+      "description": "Route plain-language requests for Pi, Claude Code, Cursor, Copilot, OpenClaw ACP, OpenCode, Gemini CLI, Qwen, Kiro, Kimi, iFlow, Factory Droid, Kilocode, or explicit ACP harness work into either OpenClaw ACP runtime sessions or direct acpx-driven sessions (\"telephone game\" flow). For coding-agent thread requests, read this skill first, then use only `sessions_spawn` for thread creation. Codex chat binding defaults to the native Codex app-server plugin unless ACP is explicit or background spawn needs ACP."
+    },
+    {
+      "name": "browser-automation",
+      "description": "Use when controlling web pages with the OpenClaw browser tool, especially multi-step flows, login checks, tab management, or recovery from stale refs/timeouts."
+    },
+    {
+      "name": "diffs",
+      "description": "Use the diffs tool to produce real, shareable diffs (viewer URL, file artifact, or both) instead of manual edit summaries."
+    },
+    {
+      "name": "feishu-doc",
+      "description": "|"
+    },
+    {
+      "name": "feishu-drive",
+      "description": "|"
+    },
+    {
+      "name": "feishu-perm",
+      "description": "|"
+    },
+    {
+      "name": "feishu-wiki",
+      "description": "|"
+    },
+    {
+      "name": "obsidian-vault-maintainer",
+      "description": "Maintain an Obsidian-friendly memory wiki vault with wikilinks, frontmatter, and official Obsidian CLI awareness."
+    },
+    {
+      "name": "wiki-maintainer",
+      "description": "Maintain the OpenClaw memory wiki vault with deterministic pages, managed blocks, and source-backed updates."
+    },
+    {
+      "name": "prose",
+      "description": "OpenProse VM skill pack. Activate on any `prose` command, .prose files, or OpenProse mentions; orchestrates multi-agent workflows."
+    },
+    {
+      "name": "qqbot-channel",
+      "description": "QQ 频道管理技能。查询频道列表、子频道、成员、发帖、公告、日程等操作。使用 qqbot_channel_api 工具代理 QQ 开放平台 HTTP 接口，自动处理 Token 鉴权。当用户需要查看频道、管理子频道、查询成员、发布帖子/公告/日程时使用。"
+    },
+    {
+      "name": "qqbot-media",
+      "description": "QQBot 富媒体收发能力。使用 <qqmedia> 标签，系统根据文件扩展名自动识别类型（图片/语音/视频/文件）。"
+    },
+    {
+      "name": "qqbot-remind",
+      "description": "QQBot 定时提醒。支持一次性和周期性提醒的创建、查询、取消。当通过 QQ 通道通信且涉及提醒/定时任务时使用。"
+    },
+    {
+      "name": "tavily",
+      "description": "Tavily web search, content extraction, and research tools."
+    },
+    {
+      "name": "1password",
+      "description": "Set up and use 1Password CLI for sign-in, desktop integration, and reading or injecting secrets."
+    },
+    {
+      "name": "apple-notes",
+      "description": "Create, view, edit, delete, search, move, or export Apple Notes via the memo CLI on macOS."
+    },
+    {
+      "name": "apple-reminders",
+      "description": "List, add, edit, complete, or delete Apple Reminders and reminder lists via remindctl."
+    },
+    {
+      "name": "bear-notes",
+      "description": "Create, search, and manage Bear notes via grizzly CLI."
+    },
+    {
+      "name": "blogwatcher",
+      "description": "Monitor blogs and RSS/Atom feeds for updates using the blogwatcher CLI."
+    },
+    {
+      "name": "blucli",
+      "description": "BluOS CLI (blu) for discovery, playback, grouping, and volume."
+    },
+    {
+      "name": "bluebubbles",
+      "description": "Send and manage iMessages via BlueBubbles, including attachments, tapbacks, edits, replies, and groups."
+    },
+    {
+      "name": "camsnap",
+      "description": "Capture frames or clips from RTSP/ONVIF cameras."
+    },
+    {
+      "name": "clawhub",
+      "description": "Search, install, update, sync, or publish agent skills with the ClawHub CLI and registry."
+    },
+    {
+      "name": "coding-agent",
+      "description": "Delegate coding tasks to Codex, Claude Code, OpenCode, or Pi agents via immediate background processes. Use when: (1) building or creating features/apps, (2) reviewing PRs in a temp clone/worktree, (3) refactoring large codebases, (4) iterative coding that needs file exploration. NOT for: simple one-line fixes (just edit), reading code (use read tool), thread-bound ACP harness requests in chat (use sessions_spawn with runtime:\"acp\"), or any work in ~/clawd workspace (never spawn agents here). All coding-agent runs start with background:true immediately. Claude Code: use --print --permission-mode bypassPermissions (no PTY). Codex/Pi/OpenCode: pty:true required. Completion notification must use openclaw message send, not system event/heartbeat."
+    },
+    {
+      "name": "discord",
+      "description": "Discord ops via the message tool (channel=discord)."
+    },
+    {
+      "name": "eightctl",
+      "description": "Control Eight Sleep pods (status, temperature, alarms, schedules)."
+    },
+    {
+      "name": "gemini",
+      "description": "Gemini CLI for one-shot Q&A, summaries, and generation."
+    },
+    {
+      "name": "gh-issues",
+      "description": "Fetch GitHub issues, delegate fixes to subagents, open PRs, watch reviews, or run /gh-issues workflows."
+    },
+    {
+      "name": "gifgrep",
+      "description": "Search GIF providers with CLI/TUI, download results, and extract stills/sheets."
+    },
+    {
+      "name": "github",
+      "description": "Use gh for GitHub issues, PR status, CI/logs, comments, reviews, releases, and API queries."
+    },
+    {
+      "name": "gog",
+      "description": "Google Workspace CLI for Gmail, Calendar, Drive, Contacts, Sheets, and Docs."
+    },
+    {
+      "name": "goplaces",
+      "description": "Query Google Places for text search, place details, resolve, reviews, or scriptable JSON via goplaces."
+    },
+    {
+      "name": "healthcheck",
+      "description": "Audit and harden hosts running OpenClaw for SSH, firewall, updates, exposure, cron checks, and risk posture."
+    },
+    {
+      "name": "himalaya",
+      "description": "Use himalaya to list, read, search, compose, reply, forward, and organize IMAP/SMTP email."
+    },
+    {
+      "name": "imsg",
+      "description": "iMessage/SMS CLI for listing chats, history, and sending messages via Messages.app."
+    },
+    {
+      "name": "mcporter",
+      "description": "List, configure, authenticate, call, and inspect MCP servers/tools with mcporter over HTTP or stdio."
+    },
+    {
+      "name": "model-usage",
+      "description": "Summarize CodexBar local cost logs by model for Codex or Claude, including current or full breakdowns."
+    },
+    {
+      "name": "nano-pdf",
+      "description": "Edit PDFs with natural-language instructions using the nano-pdf CLI."
+    },
+    {
+      "name": "node-connect",
+      "description": "Diagnose OpenClaw Android, iOS, or macOS node pairing, QR/setup code, route, auth, and connection failures."
+    },
+    {
+      "name": "notion",
+      "description": "Notion API for creating and managing pages, databases, and blocks."
+    },
+    {
+      "name": "obsidian",
+      "description": "Work with Obsidian vaults (plain Markdown notes) and automate via obsidian-cli."
+    },
+    {
+      "name": "openai-whisper-api",
+      "description": "Transcribe audio via OpenAI Audio Transcriptions API (Whisper)."
+    },
+    {
+      "name": "openai-whisper",
+      "description": "Local speech-to-text with the Whisper CLI (no API key)."
+    },
+    {
+      "name": "openhue",
+      "description": "Control Philips Hue lights and scenes via the OpenHue CLI."
+    },
+    {
+      "name": "oracle",
+      "description": "Use oracle CLI to bundle prompts and files for second-model debugging, refactor, design, or review checks."
+    },
+    {
+      "name": "ordercli",
+      "description": "Foodora-only CLI for checking past orders and active order status (Deliveroo WIP)."
+    },
+    {
+      "name": "peekaboo",
+      "description": "Capture and automate macOS UI with the Peekaboo CLI."
+    },
+    {
+      "name": "sag",
+      "description": "ElevenLabs text-to-speech with mac-style say UX."
+    },
+    {
+      "name": "session-logs",
+      "description": "Search and analyze your own session logs (older/parent conversations) using jq."
+    },
+    {
+      "name": "sherpa-onnx-tts",
+      "description": "Local text-to-speech via sherpa-onnx (offline, no cloud)"
+    },
+    {
+      "name": "skill-creator",
+      "description": "Create, edit, improve, tidy, review, audit, or restructure AgentSkills and SKILL.md files."
+    },
+    {
+      "name": "slack",
+      "description": "Use the Slack tool to react, pin/unpin, send, edit, delete messages, or fetch Slack member info."
+    },
+    {
+      "name": "songsee",
+      "description": "Generate spectrograms and feature-panel visualizations from audio with the songsee CLI."
+    },
+    {
+      "name": "sonoscli",
+      "description": "Control Sonos speakers (discover/status/play/volume/group)."
+    },
+    {
+      "name": "spotify-player",
+      "description": "Terminal Spotify playback/search via spogo (preferred) or spotify_player."
+    },
+    {
+      "name": "summarize",
+      "description": "Summarize or transcribe URLs, YouTube/videos, podcasts, articles, transcripts, PDFs, and local files."
+    },
+    {
+      "name": "taskflow-inbox-triage",
+      "description": "Example TaskFlow pattern for inbox triage, intent routing, waiting on replies, and later summaries."
+    },
+    {
+      "name": "taskflow",
+      "description": "Coordinate multi-step detached tasks as one durable TaskFlow job with owner context, state, waits, and child tasks."
+    },
+    {
+      "name": "things-mac",
+      "description": "Add, update, list, search, or inspect Things 3 todos, inbox, today, projects, areas, and tags on macOS."
+    },
+    {
+      "name": "tmux",
+      "description": "Remote-control tmux sessions for interactive CLIs by sending keystrokes and scraping pane output."
+    },
+    {
+      "name": "trello",
+      "description": "Manage Trello boards, lists, and cards via the Trello REST API."
+    },
+    {
+      "name": "video-frames",
+      "description": "Extract frames or short clips from videos using ffmpeg."
+    },
+    {
+      "name": "voice-call",
+      "description": "Start voice calls via the OpenClaw voice-call plugin."
+    },
+    {
+      "name": "wacli",
+      "description": "Send third-party WhatsApp messages or sync/search WhatsApp history via wacli, not normal active chats."
+    },
+    {
+      "name": "weather",
+      "description": "Get current weather, rain, temperature, and forecasts for locations or travel planning."
+    },
+    {
+      "name": "xurl",
+      "description": "Use xurl for authenticated X API posts, replies, search, DMs, media upload, followers, or raw v2 calls."
+    }
+  ],
+  "profiles": {
+    "agent-consult-tool": [
+      "openclaw_agent_consult"
+    ],
+    "channel-tools": [
+      "conversations_list",
+      "conversation_get",
+      "messages_read",
+      "attachments_fetch",
+      "events_poll",
+      "events_wait",
+      "messages_send",
+      "permissions_respond"
+    ],
+    "live-cache-regression-runner": [
+      "noop",
+      "bundleProbe__bundle_probe"
+    ],
+    "model-scan": [
+      "ping"
+    ]
+  }
+}

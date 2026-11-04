@@ -1,0 +1,78 @@
+name: mf-quality-gate
+
+on:
+  pull_request:
+    paths:
+      - "mf.suite.json"
+      - "**/mf.suite.json"
+      - "**/function.json"
+      - "**/tools.json"
+      - "**/.mcp.json"
+      - "**/openapi*.json"
+  push:
+    branches: [main]
+
+jobs:
+  # Static layer: no secrets, no model calls, no cost. Safe for fork PRs.
+  static:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Lint and audit
+        run: |
+          npx -y modelfunction-cli@0.5.4 lint --suite mf.suite.json
+          npx -y modelfunction-cli@0.5.4 audit --suite mf.suite.json --out mf-audit.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mf-audit
+          path: mf-audit.md
+
+  # Model layer: needs a key, so it only runs where secrets exist.
+  # Fork PRs never receive repository secrets; skip explicitly instead of
+  # failing silently or showing a red check for a missing key.
+  eval:
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+    needs: static
+    runs-on: ubuntu-latest
+    env:
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Eval (advisory until --repeat aggregation is stable)
+        # Advisory on purpose: single-run scores can swing ~±5pp at
+        # temperature 0. Flip continue-on-error to false after 0.5.4+ has
+        # shipped the errors field and you have a baseline with --repeat 3.
+        continue-on-error: true
+        run: |
+          npx -y modelfunction-cli@0.5.4 eval \
+            --suite mf.suite.json \
+            --models dsv4-flash \
+            --repeat 3 \
+            --max-cost 1 \
+            --fail-under 0.85 \
+            --out scorecard.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mf-scorecard
+          path: scorecard.md
+
+      # Regression gate (optional): commit a passing scorecard JSON to
+      # .mf/baseline.json, then enable this step.
+      # - name: Regression gate
+      #   run: |
+      #     npx -y modelfunction-cli@0.5.4 eval \
+      #       --suite mf.suite.json \
+      #       --models dsv4-flash \
+      #       --repeat 3 \
+      #       --max-cost 1 \
+      #       --baseline .mf/baseline.json \
+      #       --fail-on-regression

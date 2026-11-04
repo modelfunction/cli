@@ -1,0 +1,20 @@
+{
+  "name": "OpenHands-main-draft",
+  "description": "由 mf scan 生成。请人工确认工具描述与参数，并补充 cases 后再运行 mf eval。",
+  "tools": [],
+  "cases": [],
+  "skills": [
+    {
+      "name": "cross-repo-testing",
+      "description": "This skill should be used when the user asks to \"test a cross-repo feature\", \"deploy a feature branch to staging\", \"test SDK against OH Cloud\", \"e2e test a cloud workspace feature\", \"test provider tokens\", \"test secrets inheritance\", or when changes span the SDK and OpenHands server repos and need end-to-end validation against a staging deployment."
+    },
+    {
+      "name": "upcoming-release",
+      "description": "This skill should be used when the user asks to \"generate release notes\", \"list upcoming release PRs\", \"summarize upcoming release\", \"/upcoming-release\", or needs to know what changes are part of an upcoming release."
+    },
+    {
+      "name": "update-sdk",
+      "description": "This skill should be used when the user asks to \"update SDK\", \"bump SDK version\", \"pin SDK to a commit\", \"test unreleased SDK\", \"update agent-server image\", \"bump the version\", \"prepare a release\", \"what files change for a release\", or needs to know how SDK packages are managed in the OpenHands repository. For detailed reference material, see references/docker-image-locations.md and references/sdk-pinning-examples.md in this skill directory."
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+node_modules/
+.tmp-*/
+.mf-tmp/
+.scan/
+docs/feedback-*/
+docs/feedback-*.zip
+.claude/
+用户反馈/
+*.tgz
+npm-debug.log*
+mf.suite.json
+mf.scan.json
+问题.txt
+.wrangler/

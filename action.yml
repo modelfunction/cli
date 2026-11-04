@@ -1,0 +1,97 @@
+name: modelfunction quality gate
+description: Static tool/skill checks and optional function-calling eval for an MCP or agent toolset.
+author: yunzerui
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  mode:
+    description: "static, eval, or both"
+    default: static
+  suite:
+    description: Path to the mf suite JSON.
+    default: mf.suite.json
+  models:
+    description: Comma-separated model ids from the registry (eval mode).
+    default: dsv4-flash
+  models-file:
+    description: Optional custom models registry (contains apiKeyEnv names, never keys).
+    default: ""
+  repeat:
+    description: Repeat count per case; majority scoring.
+    default: "3"
+  max-cost:
+    description: Stop eval after this estimated CNY spend.
+    default: "1"
+  fail-under:
+    description: Optional selection-accuracy threshold (0-1). Empty disables it.
+    default: ""
+  baseline:
+    description: Optional baseline scorecard JSON for --fail-on-regression.
+    default: ""
+  advisory:
+    description: When true, eval failures are warnings instead of step failures.
+    default: "true"
+  version:
+    description: modelfunction-cli version to run.
+    default: "0.5.4"
+
+outputs:
+  scorecard:
+    description: Path to the generated JSON scorecard (eval mode).
+    value: ${{ steps.eval.outputs.scorecard }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Static gate
+      if: inputs.mode == 'static' || inputs.mode == 'both'
+      shell: bash
+      run: |
+        npx -y modelfunction-cli@${{ inputs.version }} lint --suite "${{ inputs.suite }}"
+        npx -y modelfunction-cli@${{ inputs.version }} audit --suite "${{ inputs.suite }}" --out mf-audit.md
+        npx -y modelfunction-cli@${{ inputs.version }} cluster --suite "${{ inputs.suite }}" --json > mf-cluster.json
+
+    - name: Model eval
+      id: eval
+      if: inputs.mode == 'eval' || inputs.mode == 'both'
+      shell: bash
+      run: |
+        set +e
+        args=(eval --suite "${{ inputs.suite }}" --models "${{ inputs.models }}"
+              --repeat "${{ inputs.repeat }}" --max-cost "${{ inputs.max-cost }}"
+              --out mf-scorecard.json)
+        if [ -n "${{ inputs.models-file }}" ]; then
+          args+=(--models-file "${{ inputs.models-file }}")
+        fi
+        if [ -n "${{ inputs.baseline }}" ]; then
+          args+=(--baseline "${{ inputs.baseline }}" --fail-on-regression)
+        fi
+        if [ -n "${{ inputs.fail-under }}" ]; then
+          args+=(--fail-under "${{ inputs.fail-under }}")
+        fi
+        npx -y modelfunction-cli@${{ inputs.version }} "${args[@]}"
+        code=$?
+        echo "scorecard=mf-scorecard.json" >> "$GITHUB_OUTPUT"
+        if [ "${{ inputs.advisory }}" = "true" ]; then
+          echo "::warning::mf eval exited $code (advisory; see mf-scorecard.json)"
+          exit 0
+        fi
+        exit $code
+
+    - name: Upload reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mf-reports
+        path: |
+          mf-audit.md
+          mf-cluster.json
+          mf-scorecard.json
+        if-no-files-found: ignore

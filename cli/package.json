@@ -1,0 +1,52 @@
+{
+  "name": "modelfunction-cli",
+  "version": "0.5.4",
+  "type": "module",
+  "license": "MIT",
+  "description": "mf — function-calling accuracy scorecard for AI agents",
+  "keywords": [
+    "llm",
+    "function-calling",
+    "tool-use",
+    "mcp",
+    "eval",
+    "agent"
+  ],
+  "bin": {
+    "mf": "mf.js",
+    "modelfunction": "mf.js"
+  },
+  "files": [
+    "mf.js",
+    "lib",
+    "fixtures",
+    "skills",
+    "README.md",
+    "SCHEMA.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1",
+    "golden": "node scripts/golden.js",
+    "golden:update": "node scripts/golden.js --update",
+    "verify": "npm test && npm pack --dry-run",
+    "eval": "node mf.js eval",
+    "eval:mock": "node mf.js eval --models mock --show-cases",
+    "pack:check": "npm pack --dry-run",
+    "prepublishOnly": "npm test"
+  },
+  "types": "./lib/check.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/check.d.ts",
+      "default": "./lib/check.js"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7"
+  }
+}

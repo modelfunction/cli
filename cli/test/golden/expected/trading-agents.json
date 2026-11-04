@@ -1,0 +1,186 @@
+{
+  "suite": "trading-agents",
+  "counts": {
+    "tools": 10,
+    "skills": 0
+  },
+  "lint": {
+    "byCode": {
+      "warn:desc-no-when": 10
+    },
+    "actions": [
+      "warn desc-no-when get_balance_sheet",
+      "warn desc-no-when get_cashflow",
+      "warn desc-no-when get_fundamentals",
+      "warn desc-no-when get_global_news",
+      "warn desc-no-when get_income_statement",
+      "warn desc-no-when get_indicators",
+      "warn desc-no-when get_insider_transactions",
+      "warn desc-no-when get_news",
+      "warn desc-no-when get_stock_data",
+      "warn desc-no-when get_verified_market_snapshot"
+    ]
+  },
+  "cluster": {
+    "clusters": [
+      {
+        "label": "cluster-1",
+        "tools": [
+          "get_balance_sheet"
+        ]
+      },
+      {
+        "label": "cluster-2",
+        "tools": [
+          "get_cashflow"
+        ]
+      },
+      {
+        "label": "cluster-3",
+        "tools": [
+          "get_fundamentals"
+        ]
+      },
+      {
+        "label": "cluster-4",
+        "tools": [
+          "get_global_news"
+        ]
+      },
+      {
+        "label": "cluster-5",
+        "tools": [
+          "get_income_statement"
+        ]
+      },
+      {
+        "label": "cluster-6",
+        "tools": [
+          "get_indicators"
+        ]
+      },
+      {
+        "label": "cluster-7",
+        "tools": [
+          "get_insider_transactions"
+        ]
+      },
+      {
+        "label": "cluster-8",
+        "tools": [
+          "get_news"
+        ]
+      },
+      {
+        "label": "cluster-9",
+        "tools": [
+          "get_stock_data"
+        ]
+      },
+      {
+        "label": "cluster-10",
+        "tools": [
+          "get_verified_market_snapshot"
+        ]
+      }
+    ],
+    "riskyPairs": [],
+    "familyHints": [
+      {
+        "token": "new",
+        "size": 2,
+        "merged": [],
+        "loose": [
+          "get_global_news",
+          "get_news"
+        ]
+      }
+    ],
+    "boundaries": [
+      {
+        "label": "family-1",
+        "size": 5,
+        "tools": [
+          "get_balance_sheet",
+          "get_cashflow",
+          "get_fundamentals",
+          "get_income_statement",
+          "get_news"
+        ],
+        "axes": [
+          {
+            "tool": "get_balance_sheet",
+            "distinct": [
+              "balance",
+              "sheet"
+            ],
+            "paramsOnly": []
+          },
+          {
+            "tool": "get_cashflow",
+            "distinct": [
+              "cashflow"
+            ],
+            "paramsOnly": []
+          },
+          {
+            "tool": "get_fundamentals",
+            "distinct": [
+              "fundamental"
+            ],
+            "paramsOnly": []
+          },
+          {
+            "tool": "get_income_statement",
+            "distinct": [
+              "income",
+              "statement"
+            ],
+            "paramsOnly": []
+          },
+          {
+            "tool": "get_news",
+            "distinct": [
+              "new"
+            ],
+            "paramsOnly": [
+              "end_date",
+              "start_date"
+            ]
+          }
+        ],
+        "sharedParams": [
+          "curr_date",
+          "freq",
+          "ticker"
+        ],
+        "pairs": [
+          {
+            "a": "get_cashflow",
+            "b": "get_income_statement",
+            "similarity": 0.43,
+            "basis": "lexical"
+          },
+          {
+            "a": "get_balance_sheet",
+            "b": "get_news",
+            "similarity": 0.4,
+            "basis": "lexical"
+          },
+          {
+            "a": "get_fundamentals",
+            "b": "get_news",
+            "similarity": 0.4,
+            "basis": "lexical"
+          },
+          {
+            "a": "get_income_statement",
+            "b": "get_news",
+            "similarity": 0.4,
+            "basis": "lexical"
+          }
+        ]
+      }
+    ]
+  }
+}

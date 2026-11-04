@@ -1,0 +1,154 @@
+{
+  "name": "recruiting-agent",
+  "description": "招聘 Agent 的 function-calling 评测集：简历评分、面试题、薪资区间、JD 改写。",
+  "tools": [
+    { "ref": "./tools/resume_score.json" },
+    {
+      "name": "interview_question",
+      "description": "根据岗位和候选人背景生成针对性的模拟面试题。",
+      "parameters": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": { "type": "string", "description": "岗位名称，如后端工程师" },
+          "background": { "type": "string", "description": "候选人简历或背景摘要" },
+          "count": { "type": "number", "description": "题目数量，默认 5" }
+        }
+      }
+    },
+    {
+      "name": "salary_band",
+      "description": "根据城市、岗位和年限给出薪资区间参考。",
+      "parameters": {
+        "type": "object",
+        "required": ["city", "role"],
+        "properties": {
+          "city": { "type": "string", "description": "城市，如上海" },
+          "role": { "type": "string", "description": "岗位名称" },
+          "years": { "type": "number", "description": "工作年限" }
+        }
+      }
+    },
+    {
+      "name": "jd_rewrite",
+      "description": "把原始职位描述改写得更有吸引力，保留关键要求。",
+      "parameters": {
+        "type": "object",
+        "required": ["jd"],
+        "properties": {
+          "jd": { "type": "string", "description": "原始职位描述文本" },
+          "tone": { "type": "string", "enum": ["专业", "活泼", "简洁"], "description": "语气风格" }
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "r01",
+      "input": "帮我给这个候选人打分，看看和岗位的匹配度。\n\n简历：张三，5 年 Python 后端经验，做过 RAG 检索增强和 LLM 应用，熟悉 MySQL、Redis、Docker，带过 3 人小组。\n\n职位描述：招聘 AI 应用后端工程师，3 年以上经验，要求熟悉 Python、MySQL、Redis、Docker、Kubernetes，有 LLM 与 RAG 项目经验优先。",
+      "expectedTool": "resume_score",
+      "expectedArgs": {
+        "resume": { "$contains": "张三" },
+        "jd": { "$contains": "Kubernetes" }
+      }
+    },
+    {
+      "id": "r02",
+      "input": "Do these match?\n\nResume: Bob, 6 years of Python and FastAPI experience, built RAG pipelines with Redis and Docker.\n\nJD: Backend engineer, 3+ years Python, Redis, Docker, Kubernetes, LLM experience preferred.",
+      "expectedTool": "resume_score",
+      "expectedArgs": {
+        "resume": { "$contains": "Bob" },
+        "jd": { "$contains": "Kubernetes" }
+      }
+    },
+    {
+      "id": "r03",
+      "input": "看看这个候选人和岗位的匹配度怎么样？",
+      "expectedTool": null,
+      "note": "没有简历或 JD 内容，应追问，而不是用编造的参数调用工具"
+    },
+    {
+      "id": "q01",
+      "input": "候选人简历：李四，3 年前端开发，做过 React 和 Vue 项目，主导过一个低代码平台。\n岗位：高级前端工程师\n帮我出 5 道面试题。",
+      "expectedTool": "interview_question",
+      "expectedArgs": {
+        "background": { "$contains": "李四" },
+        "role": { "$contains": "前端" },
+        "count": 5
+      }
+    },
+    {
+      "id": "q02",
+      "input": "给我出几道关于 Redis 和消息队列的面试题。",
+      "expectedTool": "interview_question",
+      "expectedArgs": {},
+      "note": "只测工具选择：没有岗位和背景信息"
+    },
+    {
+      "id": "s01",
+      "input": "城市：上海\n岗位：后端工程师\n年限：5\n这个岗位大概能给多少薪水？",
+      "expectedTool": "salary_band",
+      "expectedArgs": {
+        "city": { "$contains": "上海" },
+        "role": { "$contains": "后端" },
+        "years": 5
+      }
+    },
+    {
+      "id": "s02",
+      "input": "我们在杭州招一个算法工程师，3 年经验，预算大概多少？",
+      "expectedTool": "salary_band",
+      "expectedArgs": {
+        "city": { "$contains": "杭州" },
+        "role": { "$contains": "算法" },
+        "years": 3
+      }
+    },
+    {
+      "id": "j01",
+      "input": "岗位：AI 产品经理\n职位描述：负责 AI 产品规划与落地，要求 3 年 B 端产品经验，熟悉大模型能力边界。把它改写得更吸引人，语气活泼一点。",
+      "expectedTool": "jd_rewrite",
+      "expectedArgs": {
+        "jd": { "$contains": "AI 产品规划" },
+        "tone": "活泼"
+      }
+    },
+    {
+      "id": "j02",
+      "input": "帮我把这段职位描述润色得更简洁。\n职位描述：我们寻找一位熟悉 Kubernetes 和 Prometheus 的 SRE 工程师。",
+      "expectedTool": "jd_rewrite",
+      "expectedArgs": {
+        "jd": { "$contains": "Kubernetes" }
+      }
+    },
+    {
+      "id": "n01",
+      "input": "你好，你能做什么？",
+      "expectedTool": null
+    },
+    {
+      "id": "n02",
+      "input": "你们怎么收费？",
+      "expectedTool": null
+    },
+    {
+      "id": "n03",
+      "input": "帮我写一封邮件给候选人，说明面试安排。",
+      "expectedTool": null,
+      "note": "没有邮件工具，不应误调用面试题工具"
+    },
+    {
+      "id": "x01",
+      "input": "简历里有 5 年经验，这个岗位在上海能给多少薪水？",
+      "expectedTool": "salary_band",
+      "expectedArgs": {
+        "city": { "$contains": "上海" }
+      },
+      "note": "有“简历”字样，但真实意图是薪资"
+    }
+  ],
+  "profiles": {
+    "screening": ["resume_score", "interview_question"],
+    "offer": ["salary_band", "jd_rewrite"]
+  }
+}

@@ -1,0 +1,35 @@
+[
+  {
+    "name": "tool-pair",
+    "verdict": "warn",
+    "summary": {
+      "error": 0,
+      "warn": 1,
+      "info": 1
+    },
+    "family": [
+      "google_search",
+      "tavily_search"
+    ],
+    "findings": [
+      "info desc-no-when tavily_search",
+      "warn pair-no-boundary tavily_search × google_search"
+    ]
+  },
+  {
+    "name": "skill-sibling",
+    "verdict": "pass",
+    "summary": {
+      "error": 0,
+      "warn": 0,
+      "info": 1
+    },
+    "family": [
+      "feishu-doc",
+      "feishu-wiki"
+    ],
+    "findings": [
+      "info skill-pair-sibling feishu-wiki × feishu-doc"
+    ]
+  }
+]

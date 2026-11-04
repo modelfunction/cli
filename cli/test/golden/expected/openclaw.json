@@ -1,0 +1,256 @@
+{
+  "suite": "openclaw",
+  "counts": {
+    "tools": 12,
+    "skills": 79
+  },
+  "lint": {
+    "byCode": {
+      "info:name-style": 1,
+      "info:required-unsourced": 2,
+      "info:schema-empty": 3,
+      "info:skill-desc-long": 1,
+      "warn:desc-no-when": 11,
+      "warn:desc-short": 2,
+      "warn:pair-no-boundary": 1,
+      "warn:param-desc-missing": 22,
+      "warn:skill-desc-short": 4,
+      "warn:skill-name-style": 1,
+      "warn:skill-pair-no-boundary": 1
+    },
+    "actions": [
+      "warn desc-no-when attachments_fetch",
+      "warn desc-no-when bundleProbe__bundle_probe",
+      "warn desc-no-when conversation_get",
+      "warn desc-no-when conversations_list",
+      "warn desc-no-when events_poll",
+      "warn desc-no-when events_wait",
+      "warn desc-no-when messages_read",
+      "warn desc-no-when messages_send",
+      "warn desc-no-when noop",
+      "warn desc-no-when permissions_respond",
+      "warn desc-no-when ping",
+      "warn desc-short noop",
+      "warn desc-short ping",
+      "warn pair-no-boundary events_poll × events_wait",
+      "warn param-desc-missing attachments_fetch.limit",
+      "warn param-desc-missing attachments_fetch.message_id",
+      "warn param-desc-missing attachments_fetch.session_key",
+      "warn param-desc-missing conversation_get.session_key",
+      "warn param-desc-missing conversations_list.channel",
+      "warn param-desc-missing conversations_list.includeDerivedTitles",
+      "warn param-desc-missing conversations_list.includeLastMessage",
+      "warn param-desc-missing conversations_list.limit",
+      "warn param-desc-missing conversations_list.search",
+      "warn param-desc-missing events_poll.after_cursor",
+      "warn param-desc-missing events_poll.limit",
+      "warn param-desc-missing events_poll.session_key",
+      "warn param-desc-missing events_wait.after_cursor",
+      "warn param-desc-missing events_wait.session_key",
+      "warn param-desc-missing events_wait.timeout_ms",
+      "warn param-desc-missing messages_read.limit",
+      "warn param-desc-missing messages_read.session_key",
+      "warn param-desc-missing messages_send.session_key",
+      "warn param-desc-missing messages_send.text",
+      "warn param-desc-missing permissions_respond.decision",
+      "warn param-desc-missing permissions_respond.id",
+      "warn param-desc-missing permissions_respond.kind",
+      "warn skill-desc-short feishu-doc",
+      "warn skill-desc-short feishu-drive",
+      "warn skill-desc-short feishu-perm",
+      "warn skill-desc-short feishu-wiki",
+      "warn skill-name-style 1password",
+      "warn skill-pair-no-boundary openai-whisper × sherpa-onnx-tts"
+    ]
+  },
+  "cluster": {
+    "clusters": [
+      {
+        "label": "event",
+        "tools": [
+          "events_poll",
+          "events_wait"
+        ]
+      },
+      {
+        "label": "message",
+        "tools": [
+          "messages_read",
+          "messages_send"
+        ]
+      },
+      {
+        "label": "cluster-3",
+        "tools": [
+          "attachments_fetch"
+        ]
+      },
+      {
+        "label": "bundle",
+        "tools": [
+          "bundleProbe__bundle_probe"
+        ]
+      },
+      {
+        "label": "cluster-5",
+        "tools": [
+          "conversation_get"
+        ]
+      },
+      {
+        "label": "cluster-6",
+        "tools": [
+          "conversations_list"
+        ]
+      },
+      {
+        "label": "cluster-7",
+        "tools": [
+          "noop"
+        ]
+      },
+      {
+        "label": "cluster-8",
+        "tools": [
+          "openclaw_agent_consult"
+        ]
+      },
+      {
+        "label": "cluster-9",
+        "tools": [
+          "permissions_respond"
+        ]
+      },
+      {
+        "label": "cluster-10",
+        "tools": [
+          "ping"
+        ]
+      }
+    ],
+    "riskyPairs": [],
+    "familyHints": [
+      {
+        "token": "conversation",
+        "size": 2,
+        "merged": [],
+        "loose": [
+          "conversation_get",
+          "conversations_list"
+        ]
+      }
+    ],
+    "boundaries": [
+      {
+        "label": "message",
+        "size": 4,
+        "tools": [
+          "attachments_fetch",
+          "conversation_get",
+          "messages_read",
+          "messages_send"
+        ],
+        "axes": [
+          {
+            "tool": "attachments_fetch",
+            "distinct": [
+              "attachment",
+              "fetch"
+            ],
+            "paramsOnly": [
+              "message_id"
+            ]
+          },
+          {
+            "tool": "conversation_get",
+            "distinct": [
+              "conversation",
+              "get"
+            ],
+            "paramsOnly": []
+          },
+          {
+            "tool": "messages_read",
+            "distinct": [
+              "read"
+            ],
+            "paramsOnly": []
+          },
+          {
+            "tool": "messages_send",
+            "distinct": [
+              "send"
+            ],
+            "paramsOnly": [
+              "text"
+            ]
+          }
+        ],
+        "sharedParams": [
+          "limit",
+          "session_key"
+        ],
+        "pairs": [
+          {
+            "a": "messages_read",
+            "b": "attachments_fetch",
+            "similarity": 0.44,
+            "basis": "lexical"
+          },
+          {
+            "a": "conversation_get",
+            "b": "messages_read",
+            "similarity": 0.38,
+            "basis": "lexical"
+          },
+          {
+            "a": "messages_read",
+            "b": "messages_send",
+            "similarity": 0.3,
+            "basis": "family"
+          }
+        ]
+      },
+      {
+        "label": "event",
+        "size": 2,
+        "tools": [
+          "events_poll",
+          "events_wait"
+        ],
+        "axes": [
+          {
+            "tool": "events_poll",
+            "distinct": [
+              "poll"
+            ],
+            "paramsOnly": [
+              "limit"
+            ]
+          },
+          {
+            "tool": "events_wait",
+            "distinct": [
+              "wait"
+            ],
+            "paramsOnly": [
+              "timeout_ms"
+            ]
+          }
+        ],
+        "sharedParams": [
+          "after_cursor",
+          "session_key"
+        ],
+        "pairs": [
+          {
+            "a": "events_poll",
+            "b": "events_wait",
+            "similarity": 0.85,
+            "basis": "structural"
+          }
+        ]
+      }
+    ]
+  }
+}

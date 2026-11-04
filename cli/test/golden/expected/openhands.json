@@ -1,0 +1,17 @@
+{
+  "suite": "openhands",
+  "counts": {
+    "tools": 0,
+    "skills": 3
+  },
+  "lint": {
+    "byCode": {},
+    "actions": []
+  },
+  "cluster": {
+    "clusters": [],
+    "riskyPairs": [],
+    "familyHints": [],
+    "boundaries": []
+  }
+}
