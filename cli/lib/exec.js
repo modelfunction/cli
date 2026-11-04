@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -13,18 +14,19 @@ const ENV_KEEP = ["PATH", "SystemRoot", "SYSTEMROOT", "TEMP", "TMP", "HOME", "US
 export async function executeTool(options) {
   const runtime = options.runtime ?? "node";
   const engine = runtime === "python" ? "python-audit" : "node-permission";
-  const entry = resolve(options.entry);
+  const entry = realpathAllow(options.entry);
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   if (runtime === "node" && options.allowNet?.length && nodeMajor < 25) {
     throw new Error("--allow-net 需要 Node >= 25（Node 24 的权限模型不限制网络）");
   }
 
   let tempDir = null;
-  let inputPath = options.inputPath ? resolve(options.inputPath) : null;
+  let inputPath = options.inputPath ? realpathAllow(options.inputPath) : null;
   if (!inputPath) {
     tempDir = await mkdtemp(join(tmpdir(), "mf-exec-"));
     inputPath = join(tempDir, "input.json");
     await writeFile(inputPath, options.inputJson ?? "{}", "utf8");
+    inputPath = realpathAllow(inputPath);
   }
 
   try {
@@ -57,11 +59,11 @@ export async function executeTool(options) {
         dirname(inputPath),
         process.cwd(),
         ...(options.allowRead ?? [])
-      ].map((path) => resolve(path));
+      ].map((path) => realpathAllow(path));
       args = [permissionFlag()];
       for (const path of dedupe(readPaths)) args.push(`--allow-fs-read=${path}`);
       if (options.allowWrite?.length) {
-        for (const path of dedupe(options.allowWrite.map((item) => resolve(item)))) {
+        for (const path of dedupe(options.allowWrite.map((item) => realpathAllow(item)))) {
           args.push(`--allow-fs-write=${path}`);
         }
       }
@@ -263,4 +265,15 @@ function formatExec(entry, result) {
   if (result.timedOut) lines.push("  note:       已按超时终止进程");
   if (result.permissionDenied) lines.push("  note:       权限模型拒绝了文件/网络访问，可用于推断沙箱需求");
   return lines.join("\n");
+}
+
+// Node's permission model matches real paths. On macOS /var is a symlink to
+// /private/var, so an unresolved tmpdir path in --allow-fs-read is rejected.
+function realpathAllow(path) {
+  const abs = resolve(path);
+  try {
+    return realpathSync.native ? realpathSync.native(abs) : realpathSync(abs);
+  } catch {
+    return abs;
+  }
 }
