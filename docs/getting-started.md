@@ -9,7 +9,7 @@
 - 一个 OpenAI 兼容的模型端点与 Key（DeepSeek / Qwen / GLM / SiliconFlow / OpenAI，或本地 Ollama）
 
 ```bash
-npx -y modelfunction-cli@0.5.4 --version
+npx -y modelfunction-cli@0.5.5 --version
 ```
 
 可选：装成本地依赖，启动更快
@@ -142,10 +142,11 @@ npx mf ablate --suite mf.suite.json --profile screening \
 
 复制 `templates/ci/github-actions.yml` 到你的仓库，改 `--models` 与阈值，并把 Key 放进 Secrets。
 
-- **静态层**：`mf lint` + `mf audit`，零密钥零成本，所有 PR（含 fork PR）都跑；
+- **静态层**：`mf lint` + `mf audit` + `mf cluster --json`，零密钥零成本，所有 PR（含 fork PR）都跑；
 - **eval 层**：只在同仓分支/push 跑（fork PR 拿不到 secrets），默认带 `--max-cost`；
-- 门槛：`--fail-under 0.85`；在当前版本建议保持 advisory（`continue-on-error: true`），等 `--repeat` 聚合与 0.5.4 的 `errors` 字段稳定后再切硬门禁；
-- 回归：`--baseline .mf/baseline.json --fail-on-regression`（任一已复核用例 pass→fail 即失败）。
+- 门槛：`--fail-under 0.85`；建议先保持 advisory（`continue-on-error: true`），等你有一份 `--repeat 3` 的稳定基线后再切硬门禁；
+- 回归：`--baseline .mf/baseline.json --fail-on-regression`（任一已复核用例 pass→fail 即失败）；
+- 限流端点：`--retry 4 --min-interval 1100`（约 55 RPM），重试只针对 429/5xx/网络错误，不改变判分口径。内网/非 GitHub 环境的本地门禁见 `docs/local-gate.md`。
 
 ## 接进编码 Agent（MCP）
 
@@ -154,14 +155,14 @@ npx mf ablate --suite mf.suite.json --profile screening \
   "mcpServers": {
     "modelfunction": {
       "command": "npx",
-      "args": ["-y", "modelfunction-cli@0.5.4", "mcp"]
+      "args": ["-y", "modelfunction-cli@0.5.5", "mcp"]
     }
   }
 }
 ```
 
 Claude Code 放 `.mcp.json`，Cursor 放 `.cursor/mcp.json`，Kimi Code 按其文档。
-可用工具：`scan_tools`、`list_suite`、`coverage`、`add_cases`、`run_eval`（支持 `profile` 参数）。
+可用工具：`scan_tools`、`list_suite`、`coverage`、`add_cases`、`run_eval`（支持 `profile`、`retry`、`minInterval` 参数）。
 
 ## 数据边界
 

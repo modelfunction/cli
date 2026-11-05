@@ -97,6 +97,8 @@ Eval options:
   --profile <names>     score each mounted group separately ("all" or names from suite.profiles)
   --repeat <n>          run each case n times and score the majority; reports unstable cases (default 1)
   --max-cost <cny>      stop after the estimated spend crosses this limit (exit 2; no partial scorecard)
+  --retry <n>           retries per request on HTTP 429/5xx and network errors (default 2; 3 attempts total)
+  --min-interval <ms>   minimum spacing between model requests; use it to stay under an endpoint RPM
   --progress            print per-case progress to stderr (stdout stays clean for --json)
   --show-cases          print per-case results
   --json                print JSON instead of the table
@@ -136,7 +138,10 @@ export async function runEval(options, io = console) {
   }
   const suite = await loadSuite(options.suite);
   const cases = selectCases(suite.cases, options.cases);
-  const { registry, adapters } = await resolveModels(options.models, options.modelsFile, io);
+  const { registry, adapters } = await resolveModels(options.models, options.modelsFile, io, {
+    retries: options.retries,
+    minIntervalMs: options.minIntervalMs
+  });
   const tools = toModelTools(suite.tools);
 
   const budget = createBudget(options.maxCost ?? null);
@@ -393,7 +398,10 @@ export async function runAblate(options, io = console) {
     : selectedCases;
   const reducedCases = baseCases.filter((testCase) => testCase.expectedTool !== ablated.name);
   const droppedCases = baseCases.length - reducedCases.length;
-  const { registry, adapters } = await resolveModels(options.models, options.modelsFile, io);
+  const { registry, adapters } = await resolveModels(options.models, options.modelsFile, io, {
+    retries: options.retries,
+    minIntervalMs: options.minIntervalMs
+  });
 
   const fullTools = toModelTools(baseTools);
   const reducedTools = toModelTools(baseTools.filter((tool) => tool.name !== ablated.name));
@@ -778,7 +786,7 @@ function selectCases(cases, ids) {
   return cases.filter((testCase) => wanted.has(testCase.id));
 }
 
-async function resolveModels(ids, modelsFile, io) {
+async function resolveModels(ids, modelsFile, io, network = {}) {
   const registry = JSON.parse(await readFile(resolve(modelsFile), "utf8"));
   // Env wins; the credentials file only fills what is missing.
   await applyModelCredentials(registry);
@@ -805,7 +813,15 @@ async function resolveModels(ids, modelsFile, io) {
       continue;
     }
     registerSecrets([apiKey]);
-    adapters.push({ id, ...createOpenAiAdapter({ id, ...config }) });
+    adapters.push({
+      id,
+      ...createOpenAiAdapter({
+        id,
+        ...config,
+        retries: network.retries,
+        minIntervalMs: network.minIntervalMs
+      })
+    });
   }
 
   if (adapters.length === 0) {
@@ -1032,6 +1048,8 @@ function parseArgs(argv) {
     profiles: null,
     repeat: 1,
     maxCost: null,
+    retries: 2,
+    minIntervalMs: 0,
     progress: false,
     showCases: false,
     json: false,
@@ -1095,6 +1113,18 @@ function parseArgs(argv) {
         const raw = Number(value());
         if (!Number.isFinite(raw) || raw <= 0) throw new Error("--max-cost expects a positive CNY amount");
         options.maxCost = raw;
+        break;
+      }
+      case "--retry": {
+        const raw = Number(value());
+        if (!Number.isInteger(raw) || raw < 0 || raw > 10) throw new Error("--retry expects an integer between 0 and 10");
+        options.retries = raw;
+        break;
+      }
+      case "--min-interval": {
+        const raw = Number(value());
+        if (!Number.isInteger(raw) || raw < 0 || raw > 60_000) throw new Error("--min-interval expects an integer between 0 and 60000 (ms)");
+        options.minIntervalMs = raw;
         break;
       }
       case "--progress": options.progress = true; break;

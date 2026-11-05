@@ -112,6 +112,7 @@ export function scoreModel({ model, cases, results, pricing, scope = "base" }) {
       source: testCase.source ?? "manual",
       latencyMs: result.latencyMs ?? 0,
       usage: result.usage ?? { input: 0, output: 0 },
+      ...(result.retries > 0 ? { retries: result.retries } : {}),
       error,
       ...(error ? { errorKind: classifyError(error) } : {})
     };
@@ -162,6 +163,7 @@ export function scoreModel({ model, cases, results, pricing, scope = "base" }) {
     errors,
     errorsByKind,
     scoredTotal,
+    retries: rows.reduce((sum, row) => sum + (row.retries ?? 0), 0),
     p50LatencyMs: percentile(latencies, 0.5),
     p95LatencyMs: percentile(latencies, 0.95),
     avgCostCny: total ? costCny / total : 0,

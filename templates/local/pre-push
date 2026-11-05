@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Static gate before push: zero keys, zero model calls, seconds.
+#
+# Install (POSIX shell / git-bash):
+#   cp templates/local/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# Behavior: lint failures block the push. audit and cluster are advisory and
+# write reports under MF_STATIC_DIR (default .mf/static).
+set -u
+
+VERSION="${MF_VERSION:-0.5.5}"
+SUITE="${MF_SUITE:-mf.suite.json}"
+OUT_DIR="${MF_STATIC_DIR:-.mf/static}"
+
+mkdir -p "$OUT_DIR"
+
+mf() { npx -y "modelfunction-cli@${VERSION}" "$@"; }
+
+echo "[mf] lint $SUITE"
+if ! mf lint --suite "$SUITE"; then
+  echo "[mf] lint failed; push blocked" >&2
+  exit 1
+fi
+
+echo "[mf] audit + cluster (advisory)"
+mf audit --suite "$SUITE" --out "$OUT_DIR/audit.md" || true
+mf cluster --suite "$SUITE" --json > "$OUT_DIR/cluster.json" || true
+exit 0

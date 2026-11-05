@@ -1,5 +1,6 @@
 const TIMEOUT_MS = 60_000;
-const MAX_ATTEMPTS = 3;
+const DEFAULT_RETRIES = 2;
+const MAX_RETRY_DELAY_MS = 30_000;
 
 export function createOpenAiAdapter(config) {
   const apiKey = process.env[config.apiKeyEnv];
@@ -7,13 +8,25 @@ export function createOpenAiAdapter(config) {
     throw new Error(`${config.id}: environment variable ${config.apiKeyEnv} is not set`);
   }
   const endpoint = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const retries = clampInt(config.retries, 0, 10, DEFAULT_RETRIES);
+  const minIntervalMs = clampInt(config.minIntervalMs, 0, 60_000, 0);
+  let lastRequestAt = 0;
+
+  async function throttle() {
+    if (minIntervalMs <= 0) return;
+    const wait = lastRequestAt + minIntervalMs - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastRequestAt = Date.now();
+  }
 
   return {
     label: config.model,
     async call({ messages, tools }) {
       const started = performance.now();
       let lastError = "request failed";
-      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+        const retried = attempt - 1;
+        await throttle();
         try {
           const response = await fetch(endpoint, {
             method: "POST",
@@ -33,13 +46,16 @@ export function createOpenAiAdapter(config) {
 
           if (response.status === 429 || response.status >= 500) {
             lastError = `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`;
-            await sleep(attempt * 1000);
+            if (attempt <= retries) {
+              await sleep(retryDelayMs(response.headers.get("retry-after"), retried));
+            }
             continue;
           }
           if (!response.ok) {
             const body = await response.text();
             return {
               ok: false,
+              retries: retried,
               error: `HTTP ${response.status}: ${body.slice(0, 300)}`,
               toolCalls: [],
               usage: { input: 0, output: 0 },
@@ -55,6 +71,7 @@ export function createOpenAiAdapter(config) {
           }));
           return {
             ok: true,
+            retries: retried,
             toolCalls,
             usage: {
               input: data.usage?.prompt_tokens ?? 0,
@@ -66,11 +83,12 @@ export function createOpenAiAdapter(config) {
           };
         } catch (error) {
           lastError = error?.name === "TimeoutError" ? `timeout after ${TIMEOUT_MS}ms` : String(error?.message ?? error);
-          if (attempt < MAX_ATTEMPTS) await sleep(attempt * 1000);
+          if (attempt <= retries) await sleep(retryDelayMs(null, retried));
         }
       }
       return {
         ok: false,
+        retries,
         error: lastError,
         toolCalls: [],
         usage: { input: 0, output: 0 },
@@ -78,6 +96,22 @@ export function createOpenAiAdapter(config) {
       };
     }
   };
+}
+
+function retryDelayMs(retryAfter, retried) {
+  const header = retryAfter == null || String(retryAfter).trim() === "" ? NaN : Number(retryAfter);
+  if (Number.isFinite(header) && header >= 0) {
+    return Math.min(header * 1000, MAX_RETRY_DELAY_MS);
+  }
+  return Math.min(1000 * 2 ** retried, MAX_RETRY_DELAY_MS);
+}
+
+function clampInt(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.floor(parsed);
+  if (rounded < min || rounded > max) return fallback;
+  return rounded;
 }
 
 function parseArguments(raw) {

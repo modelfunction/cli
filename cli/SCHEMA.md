@@ -95,19 +95,21 @@ skills 只做静态检查，不参与模型评测。
   "models": [ { "model": "dsv4-flash", "total": 12, "reviewedTotal": 12, "excludedTotal": 0,
                "selectionAccuracy": 0.83, "selectionAccuracyExcludingErrors": 0.83,
                "argAccuracy": 0.9, "passRate": 0.75, "errors": 0, "errorsByKind": {},
-               "scoredTotal": 12, "p50LatencyMs": 900,
+               "scoredTotal": 12, "retries": 0, "p50LatencyMs": 900,
                "p95LatencyMs": 1800, "avgCostCny": 0.001, "totalCostCny": 0.012,
                "inputTokens": 1000, "cachedTokens": 0, "outputTokens": 200,
                "rows": [ { "id": "c1", "expectedTool": "...", "actualTool": "...",
                            "selectionCorrect": true, "args": { "total": 1, "matched": 1, "failures": [] },
                            "passed": true, "reviewed": true, "source": "manual",
-                           "latencyMs": 900, "usage": { "input": 80, "output": 20 }, "error": null } ] } ],
+                           "latencyMs": 900, "usage": { "input": 80, "output": 20 }, "error": null,
+                           "retries": 1 } ] } ],
   "profiles": { "groups": [ ... ] }
 }
 ```
 
 - 正式指标只统计 `reviewed` 且未被 `excludeFromBase` 排除的行；未复核与排除结果单独给出。
 - `errors` 是调用层失败（超时、HTTP、网络）的数量，按 `errorsByKind` 分类；它们仍计入 `selectionAccuracy`（保守口径），同时给出排除错误后的 `selectionAccuracyExcludingErrors` 与可评分行数 `scoredTotal`。
+- `retries` 是本轮因 429/5xx/网络错误而重试的请求次数（模型级汇总；行级只在大于 0 时出现）。重试不改变判分：最终成功的请求按正常结果计分，最终失败的仍计入 `errors`。
 - `--repeat` 时模型对象带 `stability`（翻转用例与多次结果分布）。
 - `--profile` 时每个组含 `profile`、`mounted`、`allInOne`、`delta`、`lifted`、`jammed`、`errors`；错误行不参与挂载对比（不会被记成 jammed），每个组的 `reviewed` 是可评分行数。
 - `fingerprint` 由工具与用例内容计算；`mf compare` 用它判断两份报告是否可比。

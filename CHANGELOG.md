@@ -3,6 +3,21 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.5.5 — 2026-11-05
+
+- `mf eval --retry <n>` controls retries for HTTP 429/5xx and network errors
+  (default 2, i.e. 3 attempts total) with exponential backoff; a server
+  `Retry-After` header takes precedence (capped at 30 s).
+- `mf eval --min-interval <ms>` enforces a minimum gap between model requests,
+  so RPM-limited endpoints can run without throttling noise.
+- Scorecards add `models[].retries` and per-row `retries` (when > 0), keeping
+  retry activity visible without counting it as a model failure.
+- The CI template's static layer now runs `cluster --json`, matching
+  `action.yml`; the stale `continue-on-error` comment is corrected.
+- New `templates/local/` and `docs/local-gate.md`: pre-push static gate,
+  inventory-hash change gate, and change-triggered nightly regression for
+  internal / non-GitHub environments.
+
 ## 0.5.4 — 2026-11-04
 
 - Cases can opt out of a scoring scope with `excludeFromBase` /
