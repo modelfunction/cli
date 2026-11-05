@@ -15,27 +15,28 @@ families, and optionally scores real models on a reviewed selection suite.
 ## Install
 
 ```bash
-npx -y modelfunction-cli@0.5.4 --version
+npx -y modelfunction-cli@0.5.5 --version
 ```
 
 ## Quickstart
 
 ```bash
 # 1. Draft a suite from an MCP config, OpenAPI, function.json, or code
-npx -y modelfunction-cli@0.5.4 scan --root ./agent --out mf.suite.json
+npx -y modelfunction-cli@0.5.5 scan --root ./agent --out mf.suite.json
 
 # 2. Static checks (no model, no cost)
-npx -y modelfunction-cli@0.5.4 lint --suite mf.suite.json
-npx -y modelfunction-cli@0.5.4 audit --suite mf.suite.json --out mf-audit.md
+npx -y modelfunction-cli@0.5.5 lint --suite mf.suite.json
+npx -y modelfunction-cli@0.5.5 audit --suite mf.suite.json --out mf-audit.md
 
 # 3. Add reviewed cases, then evaluate a real model
-npx -y modelfunction-cli@0.5.4 config set-key SILICONFLOW_API_KEY
-npx -y modelfunction-cli@0.5.4 eval --suite mf.suite.json \
+npx -y modelfunction-cli@0.5.5 config set-key SILICONFLOW_API_KEY
+npx -y modelfunction-cli@0.5.5 eval --suite mf.suite.json \
   --models dsv4-flash --repeat 3 --max-cost 1 --out scorecard.md
 ```
 
 `--repeat 3` uses majority scoring because temperature 0 can still flip a tool
-call; treat a single run as a smoke test, not a gate.
+call; treat a single run as a smoke test, not a gate. For RPM-limited endpoints,
+add `--retry 4 --min-interval 1100` to spread requests and retry 429s.
 
 ## CI / GitHub Action
 
@@ -52,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: modelfunction/cli@v0.5.4
+      - uses: modelfunction/cli@v0.5.5
         with:
           mode: both
           suite: mf.suite.json
@@ -63,7 +64,8 @@ jobs:
 ```
 
 For a fork-PR split (static on forks, eval only on same-repo branches), see
-`templates/ci/github-actions.yml`.
+`templates/ci/github-actions.yml`. For internal or non-GitHub environments, see
+`templates/local/` and `docs/local-gate.md`.
 
 ## Commands
 

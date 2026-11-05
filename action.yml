@@ -24,6 +24,12 @@ inputs:
   max-cost:
     description: Stop eval after this estimated CNY spend.
     default: "1"
+  retry:
+    description: Retries per request on HTTP 429/5xx and network errors.
+    default: "2"
+  min-interval:
+    description: Minimum milliseconds between model requests (0 disables throttling).
+    default: "0"
   fail-under:
     description: Optional selection-accuracy threshold (0-1). Empty disables it.
     default: ""
@@ -35,7 +41,7 @@ inputs:
     default: "true"
   version:
     description: modelfunction-cli version to run.
-    default: "0.5.4"
+    default: "0.5.5"
 
 outputs:
   scorecard:
@@ -66,6 +72,7 @@ runs:
         set +e
         args=(eval --suite "${{ inputs.suite }}" --models "${{ inputs.models }}"
               --repeat "${{ inputs.repeat }}" --max-cost "${{ inputs.max-cost }}"
+              --retry "${{ inputs.retry }}" --min-interval "${{ inputs.min-interval }}"
               --out mf-scorecard.json)
         if [ -n "${{ inputs.models-file }}" ]; then
           args+=(--models-file "${{ inputs.models-file }}")

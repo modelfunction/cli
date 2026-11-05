@@ -248,10 +248,12 @@ export async function startMcpServer() {
           .describe("每条用例重复次数，取多数结果；建议正式基线用 3"),
         failUnder: z.number().optional().describe("选择准确率阈值，低于则退出码为 2"),
         maxCost: z.number().positive().optional().describe("累计估算成本上限（CNY），超限退出 2 且不返回部分评分卡"),
+        retry: z.number().int().min(0).max(10).optional().describe("单次请求遇到 429/5xx/网络错误的重试次数（默认 2，共 3 次尝试）"),
+        minInterval: z.number().int().min(0).max(60000).optional().describe("两次模型请求的最小间隔（毫秒），用于压住端点 RPM"),
         progress: z.boolean().optional().describe("把逐用例进度写到 stderr（stdout 仍为纯 JSON）")
       }
     },
-    async ({ suite, models, cases, profile, repeat, failUnder, maxCost, progress }) => {
+    async ({ suite, models, cases, profile, repeat, failUnder, maxCost, retry, minInterval, progress }) => {
       const args = ["eval", "--json", "--suite", suitePath(suite)];
       if (models) args.push("--models", models);
       if (cases) args.push("--case", cases);
@@ -259,6 +261,8 @@ export async function startMcpServer() {
       if (repeat !== undefined) args.push("--repeat", String(repeat));
       if (failUnder !== undefined) args.push("--fail-under", String(failUnder));
       if (maxCost !== undefined) args.push("--max-cost", String(maxCost));
+      if (retry !== undefined) args.push("--retry", String(retry));
+      if (minInterval !== undefined) args.push("--min-interval", String(minInterval));
       if (progress) args.push("--progress");
 
       const result = await runCli(args);
