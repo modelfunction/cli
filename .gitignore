@@ -4,6 +4,8 @@ node_modules/
 .scan/
 docs/feedback-*/
 docs/feedback-*.zip
+docs/archive/**/feedback-*/
+docs/archive/**/feedback-*.zip
 .claude/
 用户反馈/
 *.tgz

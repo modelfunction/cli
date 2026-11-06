@@ -4,7 +4,7 @@ rem Point the scheduled task at this file after setting MODEL_API_KEY in the
 rem task environment (or in a wrapper script that is not committed).
 setlocal
 
-if "%MF_VERSION%"=="" set MF_VERSION=0.5.5
+if "%MF_VERSION%"=="" set MF_VERSION=0.6.1
 if "%MF_SUITE%"=="" set MF_SUITE=mf.suite.json
 if "%MF_MODELS%"=="" set MF_MODELS=mf.models.json
 if "%MF_NIGHTLY_DIR%"=="" set MF_NIGHTLY_DIR=.mf\nightly
@@ -16,10 +16,15 @@ if "%MF_MIN_INTERVAL%"=="" set MF_MIN_INTERVAL=1200
 
 if not exist "%MF_NIGHTLY_DIR%" mkdir "%MF_NIGHTLY_DIR%"
 
-for /f "delims=" %%i in ('node "%~dp0change-detect.mjs"') do set MF_DECISION=%%i
-if "%MF_DECISION%"=="skip" (
+node "%~dp0change-detect.mjs" --exit-code
+set MF_DECISION=%ERRORLEVEL%
+if "%MF_DECISION%"=="0" (
   echo [mf] inventory unchanged; skipping eval ^(0 model calls^)
   exit /b 0
+)
+if not "%MF_DECISION%"=="1" (
+  echo [mf] change detection failed ^(exit %MF_DECISION%^)
+  exit /b 2
 )
 
 for /f "delims=" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set MF_STAMP=%%i
@@ -34,5 +39,5 @@ if exist "%MF_BASELINE%" (
 
 call npx -y modelfunction-cli@%MF_VERSION% %MF_ARGS%
 set MF_CODE=%ERRORLEVEL%
-if exist "%MF_OUT%" node "%~dp0change-detect.mjs" --mark >nul
+if "%MF_CODE%"=="0" if exist "%MF_OUT%" node "%~dp0change-detect.mjs" --mark >nul
 exit /b %MF_CODE%

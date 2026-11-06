@@ -146,7 +146,16 @@ export function modelTotals(entries) {
   let errors = 0;
   let mountedCorrect = 0;
   let allCorrect = 0;
-  const usage = { inputTokens: 0, cachedTokens: 0, outputTokens: 0, costCny: 0, estimated: false };
+  const usage = {
+    inputTokens: 0,
+    cachedTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+    costCurrency: null,
+    costCny: 0,
+    estimated: false
+  };
   for (const entry of entries) {
     reviewed += entry.reviewed;
     errors += entry.errors ?? 0;
@@ -155,9 +164,13 @@ export function modelTotals(entries) {
     usage.inputTokens += entry.usage?.inputTokens ?? 0;
     usage.cachedTokens += entry.usage?.cachedTokens ?? 0;
     usage.outputTokens += entry.usage?.outputTokens ?? 0;
+    usage.totalTokens += entry.usage?.totalTokens ?? 0;
+    usage.cost += entry.usage?.cost ?? 0;
+    usage.costCurrency ||= entry.usage?.costCurrency ?? null;
     usage.costCny += entry.usage?.costCny ?? 0;
     usage.estimated ||= Boolean(entry.usage?.estimated);
   }
+  usage.costCurrency ??= "CNY";
   if (reviewed === 0) {
     return {
       reviewed: 0,

@@ -60,6 +60,9 @@ test("scoreModel aggregates selection, args, pass and errors", () => {
   assert.equal(summary.errors, 1);
   assert.equal(summary.p50LatencyMs, 100);
   assert.ok(summary.totalCostCny > 0);
+  assert.equal(summary.totalCost, summary.totalCostCny);
+  assert.equal(summary.costCurrency, "CNY");
+  assert.equal(summary.totalTokens, 24);
   assert.equal(summary.rows[2].actualTool, null);
 });
 
@@ -105,6 +108,25 @@ test("scoreModel classifies errors and reports accuracy without errors", () => {
   assert.equal(summary.selectionAccuracy, 1 / 3);
   assert.equal(summary.selectionAccuracyExcludingErrors, 1);
   assert.equal(summary.rows[1].errorKind, "timeout");
+});
+
+test("scoreModel reports cost in the configured currency", () => {
+  const cases = [{ id: "a", expectedTool: "x", expectedArgs: {} }];
+  const results = [
+    { ok: true, toolCalls: [{ name: "x", arguments: {} }], usage: { input: 1000, output: 200 }, latencyMs: 1 }
+  ];
+
+  const usd = scoreModel({ model: "m", cases, results, pricing: { input: 1, output: 2 }, currency: "usd" });
+  assert.equal(usd.costCurrency, "USD");
+  assert.ok(usd.totalCost > 0);
+  assert.equal(usd.avgCost, usd.totalCost);
+  assert.equal(usd.totalCostCny, undefined);
+  assert.equal(usd.avgCostCny, undefined);
+  assert.equal(usd.totalTokens, 1200);
+
+  const cny = scoreModel({ model: "m", cases, results, pricing: { input: 1, output: 2 } });
+  assert.equal(cny.costCurrency, "CNY");
+  assert.equal(cny.totalCostCny, cny.totalCost);
 });
 
 test("scoreModel treats no-tool cases correctly", () => {

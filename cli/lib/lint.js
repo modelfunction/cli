@@ -56,6 +56,70 @@ function idStrength(name) {
 const BOUNDARY_HINT = /(不适用|不要用于|不用于|不能用于|而非|区别于|not for|do not use)/i;
 // Chinese descriptions are compared as bigrams, so mid-0.3s similarity is noise.
 const NO_BOUNDARY_SIMILARITY = 0.5;
+// Two advisory checks from real description experiments: imperatives aimed at
+// optional params can suppress the call entirely, and renamed tools leave stale
+// names in sibling descriptions. Both are info-only; they depend on wording.
+const OPTIONAL_HINT =
+  /(可选|optional|非必填|如有|如果需要|可提供|if [^.\n]{0,30}\b(provided|available|present|omitted)\b|when [^.\n]{0,30}\b(provided|available|present)\b)/i;
+const IMPERATIVE_EN = /\b(pass|provide|supply|include|set|specify|add|send|put)\b/i;
+const IMPERATIVE_ZH = /(传入|传|提供|带上|设置|指定|填写|附上|注明)/;
+const IMPERATIVE_START_EN = /^(pass|provide|supply|include|set|specify|add|send|put)\b/i;
+const IMPERATIVE_START_ZH = /^(传入|传|提供|带上|设置|指定|填写|附上|注明)/;
+const BACKTICK_ID = /`([a-z][a-z0-9_-]{2,})`/g;
+const SNAKE_ID = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b/g;
+const NON_TOOL_SUFFIX =
+  /_(id|ids|key|token|path|name|url|uri|type|schema|count|size|format|length|text|json|yaml|yml|md|txt|html|htm|pdf|csv)$/;
+const NON_TOOL_NAMES = new Set([
+  "api_key", "access_token", "base_url", "content_type", "status_code", "error_code",
+  "http_status", "input_schema", "output_schema", "json_schema", "file_path", "file_name",
+  "user_id", "session_id", "tenant_id", "request_id", "trace_id", "tool_name", "mcp_server"
+]);
+const ACTION_TOKENS = new Set([
+  "get", "set", "list", "read", "write", "search", "create", "delete", "update", "send",
+  "fetch", "query", "run", "exec", "execute", "open", "close", "add", "remove", "check",
+  "scan", "parse", "score", "match", "generate", "render", "save", "load", "find", "lookup",
+  "call", "invoke", "publish", "edit", "rewrite", "analyze", "analyse", "summarize",
+  "summarise", "translate", "tool", "tools", "info", "data", "result", "results", "item",
+  "items", "skill", "skills", "mcp"
+]);
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function mentionsImperatively(text, name) {
+  if (!text || !name) return false;
+  const index = text.indexOf(name);
+  if (index === -1) return false;
+  const around = text.slice(Math.max(0, index - 40), Math.min(text.length, index + name.length + 40));
+  if (OPTIONAL_HINT.test(around)) return false;
+  return IMPERATIVE_EN.test(around) || IMPERATIVE_ZH.test(around);
+}
+
+function startsImperatively(text) {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed || OPTIONAL_HINT.test(trimmed)) return false;
+  return IMPERATIVE_START_EN.test(trimmed) || IMPERATIVE_START_ZH.test(trimmed);
+}
+
+function referencedNames(text) {
+  const found = new Set();
+  for (const match of String(text ?? "").matchAll(BACKTICK_ID)) found.add(match[1]);
+  for (const match of String(text ?? "").matchAll(SNAKE_ID)) found.add(match[1]);
+  return found;
+}
+
+function sharedDomainToken(candidate, toolNames) {
+  const candidateTokens = new Set(nameTokens(candidate).filter((token) => !ACTION_TOKENS.has(token)));
+  if (candidateTokens.size === 0) return null;
+  for (const known of toolNames) {
+    const knownTokens = new Set(nameTokens(known).filter((token) => !ACTION_TOKENS.has(token)));
+    for (const token of candidateTokens) {
+      if (knownTokens.has(token)) return { name: known, token };
+    }
+  }
+  return null;
+}
 
 // `pairScope` (a Set of names) is for incremental gates: only emit pair
 // findings that touch one of the new capabilities. Installed × installed pairs
@@ -63,6 +127,12 @@ const NO_BOUNDARY_SIMILARITY = 0.5;
 export function lintSuite(suite, { pairScope } = {}) {
   const inScope = (pair) => !pairScope || pairScope.has(pair.a) || pairScope.has(pair.b);
   const toolByName = new Map(suite.tools.map((tool) => [tool.name, tool]));
+  const toolNamesList = suite.tools.map((tool) => tool.name);
+  const knownNames = new Set([
+    ...toolNamesList,
+    ...(suite.skills ?? []).map((skill) => skill.name),
+    ...suite.tools.flatMap((tool) => Object.keys(tool.parameters?.properties ?? {}))
+  ]);
   const findings = [];
   const add = (severity, code, tool, message, extra = {}) =>
     findings.push({ severity, code, kind: "tool", tool, message, ...extra });
@@ -206,6 +276,41 @@ export function lintSuite(suite, { pairScope } = {}) {
       if (schema?.type === "array" && !schema.items) {
         add("warn", "param-array-no-items", tool.name, `参数 ${name} 是数组但未定义 items`, { param: name });
       }
+    }
+
+    for (const name of names) {
+      if (required.includes(name)) continue;
+      const schema = properties[name] ?? {};
+      if (mentionsImperatively(description, name) || startsImperatively(schema.description)) {
+        add(
+          "info",
+          "param-optional-imperative",
+          tool.name,
+          `可选参数 ${name} 用了祈使句提示；用户输入没提供它时，模型可能因此干脆不调用`,
+          {
+            param: name,
+            suggestion: `改成条件式（例如「如有${name}可传入」），或把 ${name} 改为必填`
+          }
+        );
+      }
+    }
+
+    for (const ref of referencedNames(description)) {
+      if (ref === tool.name || knownNames.has(ref) || NON_TOOL_NAMES.has(ref) || NON_TOOL_SUFFIX.test(ref)) {
+        continue;
+      }
+      const similar = sharedDomainToken(ref, toolNamesList);
+      const backticked = new RegExp(`\`${escapeRegExp(ref)}\``).test(description);
+      if (!similar && !backticked) continue;
+      add(
+        "info",
+        "desc-dangling-tool",
+        tool.name,
+        similar
+          ? `description 提到 ${ref}，但套件里没有这个工具；最接近的是 ${similar.name}（共享 ${similar.token}）。若是改名，请同步描述引用`
+          : `description 用代码格式提到 ${ref}，但套件里没有这个工具；确认不是改名后遗留的悬空引用`,
+        { ref, ...(similar ? { similarTo: similar.name } : {}) }
+      );
     }
   }
 

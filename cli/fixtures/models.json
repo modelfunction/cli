@@ -1,11 +1,12 @@
 {
-  "_note": "pricing 为人民币/百万 tokens 的参考值，运行前请按各家最新价目核对",
+  "_note": "pricing 为每百万 tokens 的参考价，currency 指定币种（CNY/USD，默认 CNY）；运行前请按各家最新价目核对",
   "mock": { "type": "mock" },
   "deepseek": {
     "type": "openai",
     "baseUrl": "https://api.deepseek.com/v1",
     "model": "deepseek-chat",
     "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "currency": "CNY",
     "pricing": { "input": 2, "output": 8 }
   },
   "dsv4-flash": {
@@ -13,6 +14,7 @@
     "baseUrl": "https://api.siliconflow.cn/v1",
     "model": "deepseek-ai/DeepSeek-V4-Flash",
     "apiKeyEnv": "SILICONFLOW_API_KEY",
+    "currency": "CNY",
     "pricing": { "input": 1.0, "cachedInput": 0.02, "output": 2.0 }
   },
   "qwen": {
@@ -20,6 +22,7 @@
     "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "model": "qwen-plus",
     "apiKeyEnv": "DASHSCOPE_API_KEY",
+    "currency": "CNY",
     "pricing": { "input": 0.8, "output": 2 }
   },
   "glm": {
@@ -27,6 +30,7 @@
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
     "model": "glm-4-air",
     "apiKeyEnv": "ZHIPU_API_KEY",
+    "currency": "CNY",
     "pricing": { "input": 0.5, "output": 0.5 }
   },
   "openai": {
@@ -34,6 +38,7 @@
     "baseUrl": "https://api.openai.com/v1",
     "model": "gpt-4o-mini",
     "apiKeyEnv": "OPENAI_API_KEY",
+    "currency": "CNY",
     "pricing": { "input": 1.1, "output": 4.3 }
   }
 }

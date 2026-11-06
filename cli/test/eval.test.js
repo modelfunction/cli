@@ -137,6 +137,14 @@ test("--progress writes per-case progress to stderr", async () => {
   assert.match(errors.join("\n"), /\[mock\] 2\/13/);
 });
 
+test("--max-tokens stops the run and returns exit code 2", async () => {
+  const { io, errors } = capture();
+  const code = await runEval(baseOptions({ maxTokens: 10 }), io);
+  assert.equal(code, 2);
+  assert.match(errors.join("\n"), /token limit reached/);
+  assert.match(errors.join("\n"), /--max-tokens/);
+});
+
 test("--max-cost stops the run and returns exit code 2", async () => {
   const dir = await mkdtemp(join(tmpdir(), "mf-budget-"));
   const modelsFile = join(dir, "models.json");

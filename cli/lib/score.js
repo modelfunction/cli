@@ -76,7 +76,11 @@ export function pickRepresentative(runs) {
   };
 }
 
-export function costCnyOf(usage, pricing) {
+export function tokensOf(usage) {
+  return (usage?.input ?? 0) + (usage?.output ?? 0);
+}
+
+export function costOf(usage, pricing) {
   if (!pricing) return 0;
   const input = usage?.input ?? 0;
   const cached = Math.min(input, usage?.cached ?? 0);
@@ -89,7 +93,7 @@ export function costCnyOf(usage, pricing) {
   );
 }
 
-export function scoreModel({ model, cases, results, pricing, scope = "base" }) {
+export function scoreModel({ model, cases, results, pricing, scope = "base", currency = "CNY" }) {
   const rows = cases.map((testCase, index) => {
     const result = results[index];
     const actualTool = result.ok ? (result.toolCalls?.[0]?.name ?? null) : null;
@@ -144,7 +148,9 @@ export function scoreModel({ model, cases, results, pricing, scope = "base" }) {
     inputTokens,
     rows.reduce((sum, row) => sum + (row.usage.cached ?? 0), 0)
   );
-  const costCny = rows.reduce((sum, row) => sum + costCnyOf(row.usage, pricing), 0);
+  const totalCost = rows.reduce((sum, row) => sum + costOf(row.usage, pricing), 0);
+  const totalTokens = inputTokens + outputTokens;
+  const costCurrency = String(currency || "CNY").trim().toUpperCase();
   const reviewedTotal = reviewedRows.length;
 
   return {
@@ -166,11 +172,16 @@ export function scoreModel({ model, cases, results, pricing, scope = "base" }) {
     retries: rows.reduce((sum, row) => sum + (row.retries ?? 0), 0),
     p50LatencyMs: percentile(latencies, 0.5),
     p95LatencyMs: percentile(latencies, 0.95),
-    avgCostCny: total ? costCny / total : 0,
-    totalCostCny: costCny,
+    avgCost: total ? totalCost / total : 0,
+    totalCost,
+    costCurrency,
+    ...(costCurrency === "CNY"
+      ? { avgCostCny: total ? totalCost / total : 0, totalCostCny: totalCost }
+      : {}),
     inputTokens,
     cachedTokens,
     outputTokens,
+    totalTokens,
     rows
   };
 }

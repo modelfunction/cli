@@ -2,9 +2,10 @@
 // Change gate for the local nightly eval: skip model calls when neither the
 // suite nor the model registry changed since the last successful run.
 //
-//   node change-detect.mjs          -> prints "run" or "skip"
-//   node change-detect.mjs --mark   -> records the current hashes
-//   FORCE_EVAL=1                    -> always prints "run"
+//   node change-detect.mjs              -> prints "run" or "skip"
+//   node change-detect.mjs --exit-code  -> exit 1 = run, 0 = skip
+//   node change-detect.mjs --mark       -> records the current hashes
+//   FORCE_EVAL=1                        -> always run
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -35,11 +36,6 @@ if (process.argv[2] === "--mark") {
   process.exit(0);
 }
 
-if (process.env.FORCE_EVAL === "1") {
-  console.log("run");
-  process.exit(0);
-}
-
 let previous = null;
 try {
   previous = JSON.parse(await readFile(statePath, "utf8"));
@@ -47,9 +43,15 @@ try {
   previous = null;
 }
 
+const forced = process.env.FORCE_EVAL === "1";
 const unchanged =
+  !forced &&
   previous !== null &&
   previous.suite === current.suite &&
   previous.models === current.models;
+
+if (process.argv.includes("--exit-code")) {
+  process.exit(unchanged ? 0 : 1);
+}
 
 console.log(unchanged ? "skip" : "run");
