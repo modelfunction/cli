@@ -12,11 +12,23 @@ families, and optionally scores real models on a reviewed selection suite.
 - **Local by default**: no telemetry, no server; the only outbound traffic is
   the model endpoint you configure.
 
+Use it when:
+
+- a model picks the wrong tool after another tool was added;
+- a model refuses to call a tool because a required parameter looks unsourced;
+- two tools have overlapping descriptions and no mutual boundary;
+- a function-calling score needs to become a CI regression gate.
+
 ## Install
 
 ```bash
 npx -y modelfunction-cli@0.6.1 --version
 ```
+
+Agent entry points: MCP server `npx -y modelfunction-cli@0.6.1 mcp`; install
+gate `import { check } from "modelfunction-cli"`. Agent-oriented commands and
+rules live in [AGENTS.md](AGENTS.md); LLM-readable summary at
+<https://modelfunction.pages.dev/llms.txt>.
 
 ## Quickstart
 

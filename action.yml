@@ -1,5 +1,5 @@
 name: modelfunction quality gate
-description: Static tool/skill checks and optional function-calling eval for an MCP or agent toolset.
+description: Function-calling quality gate for MCP/agent tools: static lint and audit plus optional model eval in CI.
 author: yunzerui
 branding:
   icon: check-circle

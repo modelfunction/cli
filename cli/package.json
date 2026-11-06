@@ -3,14 +3,21 @@
   "version": "0.6.1",
   "type": "module",
   "license": "MIT",
-  "description": "mf — function-calling accuracy scorecard for AI agents",
+  "description": "Function-calling quality gate for AI agents: scan MCP tools/skills, lint description boundaries, and score model tool selection. Local-first, MCP-ready.",
   "keywords": [
-    "llm",
     "function-calling",
     "tool-use",
+    "tool-selection",
     "mcp",
-    "eval",
-    "agent"
+    "mcp-server",
+    "ai-agents",
+    "agent-evaluation",
+    "llm-eval",
+    "quality-gate",
+    "developer-tools",
+    "ci",
+    "openai",
+    "claude"
   ],
   "bin": {
     "mf": "mf.js",

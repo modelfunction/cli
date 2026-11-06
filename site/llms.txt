@@ -1,0 +1,33 @@
+# modelfunction-cli
+
+> Function-calling quality gate for agent tools. `mf` scans MCP tools and skills, lints description boundaries, and scores real models on a reviewed tool-selection suite. Local-first: no upload, no telemetry; the only outbound request is the model endpoint you configure.
+
+## Use it when
+
+- A model picks the wrong tool after another tool was added.
+- A model refuses to call a tool because a required parameter looks unsourced.
+- Two tools have overlapping descriptions and no mutual boundary.
+- A function-calling score needs to become a CI regression gate.
+
+## Quick start
+
+```bash
+npx -y modelfunction-cli@latest --version
+npx -y modelfunction-cli@latest scan --root ./agent --out mf.suite.json
+npx -y modelfunction-cli@latest lint --suite mf.suite.json
+npx -y modelfunction-cli@latest audit --suite mf.suite.json --out mf-audit.md
+```
+
+## Agent entry points
+
+- MCP server (stdio): `npx -y modelfunction-cli@latest mcp`
+- Install gate: `import { check } from "modelfunction-cli"`
+- Case authoring skill: `skills/mf-cases/SKILL.md` (shipped in the package)
+
+## Docs
+
+- [README](https://github.com/modelfunction/cli/blob/main/README.md): install, quickstart, data boundary.
+- [Schema](https://github.com/modelfunction/cli/blob/main/cli/SCHEMA.md): suite, scorecard, lint, check() and MCP contracts.
+- [Getting started](https://github.com/modelfunction/cli/blob/main/docs/getting-started.md): five steps to a first scorecard.
+- [Local gate](https://github.com/modelfunction/cli/blob/main/docs/local-gate.md): pre-push, change gate and nightly regression.
+- [Landing page](https://modelfunction.pages.dev/): product overview and example report.
