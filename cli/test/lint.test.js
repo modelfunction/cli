@@ -297,3 +297,96 @@ test("runtime descriptions are informational and name style is info", () => {
   assert.equal(nameStyle.severity, "info");
   assert.deepEqual(report.counts, { error: 0, warn: 0, info: 2 });
 });
+
+test("lint flags imperative wording aimed at optional params", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_report",
+        description: "当用户需要生成报告时使用。Pass a concise title for the report.",
+        parameters: {
+          type: "object",
+          properties: {
+            body: { type: "string", description: "报告正文" },
+            title: { type: "string", description: "报告标题" }
+          },
+          required: ["body"]
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "param-optional-imperative");
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].param, "title");
+  assert.equal(findings[0].severity, "info");
+});
+
+test("lint does not flag optional params with conditional wording", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_report",
+        description: "当用户需要生成报告时使用。If a title is available, pass it for the report.",
+        parameters: {
+          type: "object",
+          properties: {
+            body: { type: "string", description: "报告正文" },
+            title: { type: "string", description: "报告标题" }
+          },
+          required: ["body"]
+        }
+      }
+    ]
+  };
+  assert.equal(
+    lintSuite(suite).findings.filter((item) => item.code === "param-optional-imperative").length,
+    0
+  );
+});
+
+test("lint flags stale tool references left by a rename", () => {
+  const suite = {
+    tools: [
+      {
+        name: "read_goal_status",
+        description: "当用户询问目标进度时使用，读取当前目标状态。不要调用 get_goal。",
+        parameters: { type: "object", properties: {} }
+      },
+      {
+        name: "create_goal",
+        description: "当用户提出一个新目标时使用，创建目标记录。",
+        parameters: { type: "object", properties: {} }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "desc-dangling-tool");
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].ref, "get_goal");
+  assert.equal(findings[0].similarTo, "read_goal_status");
+});
+
+test("lint does not flag references to tools that exist", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_report",
+        description: "当用户需要生成报告时使用。读取文件请调用 file_read，不要先 file_saver。",
+        parameters: { type: "object", properties: {} }
+      },
+      {
+        name: "file_read",
+        description: "当用户需要读取文件时使用，返回文件内容。",
+        parameters: { type: "object", properties: {} }
+      },
+      {
+        name: "file_saver",
+        description: "当用户需要保存文件时使用，写入文件。",
+        parameters: { type: "object", properties: {} }
+      }
+    ]
+  };
+  assert.equal(
+    lintSuite(suite).findings.filter((item) => item.code === "desc-dangling-tool").length,
+    0
+  );
+});

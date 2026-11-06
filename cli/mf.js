@@ -4,7 +4,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSuite, toModelTools } from "./lib/suite.js";
-import { scoreModel, pickRepresentative, pct, costCnyOf } from "./lib/score.js";
+import { scoreModel, pickRepresentative, pct, costOf, tokensOf } from "./lib/score.js";
 import { formatTable, formatCaseLines, formatMarkdown } from "./lib/report.js";
 import { scanProject, buildSuiteDraft, formatScanSummary, addTools, redactReport } from "./lib/scan.js";
 import { probeStdioServer, probeHttpServer } from "./lib/mcp-probe.js";
@@ -16,7 +16,7 @@ import { auditSuite, formatAudit } from "./lib/audit.js";
 import { suiteFingerprint, hashText, hashOf } from "./lib/fingerprint.js";
 import { runExecutionChecks } from "./lib/eval-exec.js";
 import { checkSandbox, formatSandboxReport } from "./lib/sandbox-check.js";
-import { compareScorecards, formatCompare } from "./lib/compare.js";
+import { compareScorecards, formatCompare, regressionGate } from "./lib/compare.js";
 import { analyzeAblation, formatAblation } from "./lib/ablate.js";
 import { clusterTools, formatClusters } from "./lib/cluster.js";
 import {
@@ -31,7 +31,7 @@ import {
   formatProfileMarkdown
 } from "./lib/profile.js";
 import { runExec } from "./lib/exec.js";
-import { createBudget, CostLimitError } from "./lib/budget.js";
+import { createBudget, CostLimitError, TokenLimitError } from "./lib/budget.js";
 import { writeFileAtomic } from "./lib/fsutil.js";
 import {
   applyModelCredentials,
@@ -77,7 +77,7 @@ Usage:
   mf lint [--suite <file>] [--json]  # 静态检查 tools 与 skills，不调用模型
   mf check (--manifest <file> | --manifests <file>) [--installed <file>] [--json]  # 安装门禁：新能力 × 已装能力（--manifests 支持一包）
   mf compare <before.json> <after.json> [--json]
-  mf ablate --tool <name> [--suite <file>] [--profile <group>] [--models <ids>] [--max-cost <cny>] [--progress] [--json]
+  mf ablate --tool <name> [--suite <file>] [--profile <group>] [--models <ids>] [--max-cost <amount>] [--max-tokens <n>] [--progress] [--json]
   mf cluster [--suite <file>] [--threshold <0.5>] [--max-size <10>] [--out <file>] [--json]  # 建议挂载分组 + 同族候选
   mf exec --entry <file> (--input <json> | --input-json <json>) [--runtime node|python] [--python <cmd>] [--export run] [--allow-read <paths>] [--allow-write <paths>] [--allow-net <hosts>] [--timeout <ms>] [--warmup <n>] [--json]
   mf sandbox check [--json]   # probe available isolation engines on this machine
@@ -96,7 +96,8 @@ Eval options:
   --case <ids>          run only these case ids (comma-separated, repeatable)
   --profile <names>     score each mounted group separately ("all" or names from suite.profiles)
   --repeat <n>          run each case n times and score the majority; reports unstable cases (default 1)
-  --max-cost <cny>      stop after the estimated spend crosses this limit (exit 2; no partial scorecard)
+  --max-cost <amount>   stop after the estimated spend crosses this limit (exit 2; no partial scorecard)
+  --max-tokens <n>      stop after cumulative input+output tokens cross this limit (exit 2)
   --retry <n>           retries per request on HTTP 429/5xx and network errors (default 2; 3 attempts total)
   --min-interval <ms>   minimum spacing between model requests; use it to stay under an endpoint RPM
   --progress            print per-case progress to stderr (stdout stays clean for --json)
@@ -144,11 +145,13 @@ export async function runEval(options, io = console) {
   });
   const tools = toModelTools(suite.tools);
 
-  const budget = createBudget(options.maxCost ?? null);
+  const budget = createBudget({ maxCost: options.maxCost ?? null, maxTokens: options.maxTokens ?? null });
   const runs = [];
   try {
     for (const adapter of adapters) {
-      const pricing = registry[adapter.id]?.pricing ?? null;
+      const config = registry[adapter.id];
+      const pricing = config?.pricing ?? null;
+      const currency = currencyOf(adapter.id, config);
       const evaluated = await evaluate(adapter, tools, cases, options.repeat ?? 1, {
         pricing,
         budget,
@@ -159,14 +162,15 @@ export async function runEval(options, io = console) {
         cases,
         results: evaluated.results,
         pricing,
-        scope: "base"
+        scope: "base",
+        currency
       });
       if (evaluated.stability) summary.stability = evaluated.stability;
       runs.push({ adapter, results: evaluated.results, summary });
     }
   } catch (error) {
-    if (error instanceof CostLimitError) {
-      io.error(costLimitMessage(error));
+    if (error instanceof CostLimitError || error instanceof TokenLimitError) {
+      io.error(budgetLimitMessage(error));
       return 2;
     }
     throw error;
@@ -213,8 +217,8 @@ export async function runEval(options, io = console) {
         io
       });
     } catch (error) {
-      if (error instanceof CostLimitError) {
-        io.error(costLimitMessage(error));
+      if (error instanceof CostLimitError || error instanceof TokenLimitError) {
+        io.error(budgetLimitMessage(error));
         return 2;
       }
       throw error;
@@ -311,13 +315,15 @@ export async function runEval(options, io = console) {
       io.log("");
       io.log(formatCompare(comparison));
     }
-    const comparable = comparison.models.filter((model) => model.comparable && model.reviewed > 0);
-    if (comparable.length === 0) {
-      io.error("定义或用例已变更，无法判定回归（门禁跳过）");
+    const gate = regressionGate(comparison, summaries);
+    if (gate.status === "fail") {
+      io.error(gate.message);
+      return 2;
+    }
+    if (gate.status === "skip") {
+      io.error(gate.message);
     } else {
-      regressions = comparable.flatMap((model) =>
-        model.regressions.map((item) => `${model.model}/${item.id}`)
-      );
+      regressions = gate.regressions;
       if (regressions.length > 0) io.error(`regressions: ${regressions.join(", ")}`);
     }
   }
@@ -406,11 +412,13 @@ export async function runAblate(options, io = console) {
   const fullTools = toModelTools(baseTools);
   const reducedTools = toModelTools(baseTools.filter((tool) => tool.name !== ablated.name));
   const models = [];
-  const budget = createBudget(options.maxCost ?? null);
+  const budget = createBudget({ maxCost: options.maxCost ?? null, maxTokens: options.maxTokens ?? null });
 
   try {
     for (const adapter of adapters) {
-      const pricing = registry[adapter.id]?.pricing ?? null;
+      const config = registry[adapter.id];
+      const pricing = config?.pricing ?? null;
+      const currency = currencyOf(adapter.id, config);
       const fullResults = (
         await evaluate(adapter, fullTools, baseCases, 1, {
           pricing,
@@ -418,7 +426,7 @@ export async function runAblate(options, io = console) {
           onProgress: makeProgress(options, io, `${adapter.id}/full`, baseCases.length)
         })
       ).results;
-      const full = scoreModel({ model: adapter.id, cases: baseCases, results: fullResults, pricing });
+      const full = scoreModel({ model: adapter.id, cases: baseCases, results: fullResults, pricing, currency });
       const reducedResults = (
         await evaluate(adapter, reducedTools, reducedCases, 1, {
           pricing,
@@ -426,12 +434,12 @@ export async function runAblate(options, io = console) {
           onProgress: makeProgress(options, io, `${adapter.id}/ablated`, reducedCases.length)
         })
       ).results;
-      const reduced = scoreModel({ model: adapter.id, cases: reducedCases, results: reducedResults, pricing });
+      const reduced = scoreModel({ model: adapter.id, cases: reducedCases, results: reducedResults, pricing, currency });
       models.push(analyzeAblation(adapter.id, full, reduced));
     }
   } catch (error) {
-    if (error instanceof CostLimitError) {
-      io.error(costLimitMessage(error));
+    if (error instanceof CostLimitError || error instanceof TokenLimitError) {
+      io.error(budgetLimitMessage(error));
       return 2;
     }
     throw error;
@@ -786,12 +794,26 @@ function selectCases(cases, ids) {
   return cases.filter((testCase) => wanted.has(testCase.id));
 }
 
+function currencyOf(id, config) {
+  const code = String(config?.currency ?? "CNY").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(code)) {
+    throw new Error(`model "${id}": currency must be a 3-letter code (got "${config.currency}")`);
+  }
+  return code;
+}
+
 async function resolveModels(ids, modelsFile, io, network = {}) {
   const registry = JSON.parse(await readFile(resolve(modelsFile), "utf8"));
   // Env wins; the credentials file only fills what is missing.
   await applyModelCredentials(registry);
   const explicit = Boolean(ids && ids.length > 0);
   const chosen = explicit ? ids : autoSelect(registry);
+  if (!explicit && chosen.length > 0) {
+    const detail = chosen
+      .map((id) => `${id} (${registry[id]?.apiKeyEnv ?? "?"})`)
+      .join(", ");
+    io.error(`note: auto-selected ${detail} from ${modelsFile}; pass --models or --models-file to pin the registry`);
+  }
   const adapters = [];
 
   for (const id of chosen) {
@@ -851,7 +873,7 @@ async function evaluate(
     const runs = [];
     for (let attempt = 0; attempt < repeat; attempt += 1) {
       const result = await callOnce(adapter, tools, testCase);
-      budget?.spend(costCnyOf(result.usage, pricing));
+      budget?.spend({ cost: costOf(result.usage, pricing), tokens: tokensOf(result.usage) });
       runs.push(result);
     }
     if (repeat === 1) {
@@ -875,8 +897,9 @@ function makeProgress(options, io, label, total) {
   };
 }
 
-function costLimitMessage(error) {
-  return `${error.message}；已发出的请求已计费，本次不计分。减少 --case/--models/--repeat 或提高 --max-cost 后重跑。`;
+function budgetLimitMessage(error) {
+  const hint = error instanceof TokenLimitError ? "--max-tokens" : "--max-cost";
+  return `${error.message}；已发出的请求已计费，本次不计分。减少 --case/--models/--repeat 或提高 ${hint} 后重跑。`;
 }
 
 async function callOnce(adapter, tools, testCase) {
@@ -965,7 +988,9 @@ async function evaluateProfiles({
 
   const models = [];
   for (const run of runs) {
-    const pricing = registry[run.adapter.id]?.pricing ?? null;
+    const config = registry[run.adapter.id];
+    const pricing = config?.pricing ?? null;
+    const currency = currencyOf(run.adapter.id, config);
     const entries = [];
     for (const [index, profile] of selected.entries()) {
       const profileCases = caseSets[index];
@@ -981,21 +1006,26 @@ async function evaluateProfiles({
         cases: profileCases,
         results: mountedEval.results,
         pricing,
-        scope: "profiles"
+        scope: "profiles",
+        currency
       });
       const allInOne = scoreModel({
         model: run.adapter.id,
         cases: profileCases,
         results: profileCases.map((testCase) => run.results[indexById.get(testCase.id)]),
         pricing,
-        scope: "profiles"
+        scope: "profiles",
+        currency
       });
       const entry = analyzeMount(profile, mounted, allInOne);
       entry.usage = {
         inputTokens: mounted.inputTokens,
         cachedTokens: mounted.cachedTokens,
         outputTokens: mounted.outputTokens,
-        costCny: mounted.totalCostCny,
+        totalTokens: mounted.totalTokens,
+        cost: mounted.totalCost,
+        costCurrency: mounted.costCurrency,
+        ...(mounted.costCurrency === "CNY" ? { costCny: mounted.totalCostCny } : {}),
         estimated: mounted.rows.some((row) => row.usage?.estimated)
       };
       if (mountedEval.stability) entry.stability = mountedEval.stability;
@@ -1048,6 +1078,7 @@ function parseArgs(argv) {
     profiles: null,
     repeat: 1,
     maxCost: null,
+    maxTokens: null,
     retries: 2,
     minIntervalMs: 0,
     progress: false,
@@ -1111,8 +1142,14 @@ function parseArgs(argv) {
       }
       case "--max-cost": {
         const raw = Number(value());
-        if (!Number.isFinite(raw) || raw <= 0) throw new Error("--max-cost expects a positive CNY amount");
+        if (!Number.isFinite(raw) || raw <= 0) throw new Error("--max-cost expects a positive amount");
         options.maxCost = raw;
+        break;
+      }
+      case "--max-tokens": {
+        const raw = Number(value());
+        if (!Number.isInteger(raw) || raw <= 0) throw new Error("--max-tokens expects a positive integer");
+        options.maxTokens = raw;
         break;
       }
       case "--retry": {

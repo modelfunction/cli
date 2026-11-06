@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { toolFingerprint, caseFingerprint, suiteFingerprint } from "../lib/fingerprint.js";
-import { compareScorecards, formatCompare } from "../lib/compare.js";
+import { compareScorecards, formatCompare, regressionGate } from "../lib/compare.js";
 
 function row({ id = "c1", selectionCorrect = true, passed = true, matched = 1, total = 1, reviewed = true } = {}) {
   return {
@@ -17,6 +17,39 @@ function row({ id = "c1", selectionCorrect = true, passed = true, matched = 1, t
     error: null
   };
 }
+
+test("regressionGate fails when a baseline model is missing from the report", () => {
+  const gate = regressionGate({ models: [{ model: "M", reason: "模型不在新报告中" }] }, []);
+  assert.equal(gate.status, "fail");
+  assert.match(gate.message, /baseline model\(s\) not in this report: M/);
+});
+
+test("regressionGate fails when every reviewed call errored", () => {
+  const comparison = { models: [{ model: "M", comparable: true, reviewed: 2, regressions: [] }] };
+  const gate = regressionGate(comparison, [
+    { model: "M", reviewedTotal: 2, errors: 2, errorsByKind: { network: 2 } }
+  ]);
+  assert.equal(gate.status, "fail");
+  assert.match(gate.message, /all calls failed for: M \(2\/2 \{\"network\":2\}\)/);
+});
+
+test("regressionGate skips when definitions changed", () => {
+  const comparison = { models: [{ model: "M", comparable: false, reviewed: 2, regressions: [] }] };
+  const gate = regressionGate(comparison, [
+    { model: "M", reviewedTotal: 2, errors: 0, errorsByKind: {} }
+  ]);
+  assert.equal(gate.status, "skip");
+  assert.match(gate.message, /无法判定回归/);
+});
+
+test("regressionGate lists regressions for comparable models", () => {
+  const comparison = {
+    models: [{ model: "M", comparable: true, reviewed: 2, regressions: [{ id: "c1" }] }]
+  };
+  const gate = regressionGate(comparison, []);
+  assert.equal(gate.status, "ok");
+  assert.deepEqual(gate.regressions, ["M/c1"]);
+});
 
 function profileReport(hash, mountedAccuracy, allAccuracy) {
   return {

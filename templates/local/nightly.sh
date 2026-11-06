@@ -6,7 +6,7 @@
 # The API key itself comes from the environment, e.g. MODEL_API_KEY=...
 set -uo pipefail
 
-VERSION="${MF_VERSION:-0.5.5}"
+VERSION="${MF_VERSION:-0.6.1}"
 SUITE="${MF_SUITE:-mf.suite.json}"
 MODELS="${MF_MODELS:-mf.models.json}"
 OUT_DIR="${MF_NIGHTLY_DIR:-.mf/nightly}"
@@ -20,14 +20,19 @@ PROFILE="${MF_PROFILE:-}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT_DIR"
 
-decision="$(node "$HERE/change-detect.mjs")" || {
-  echo "[mf] change detection failed" >&2
-  exit 2
-}
-if [ "$decision" = "skip" ]; then
-  echo "[mf] inventory unchanged; skipping eval (0 model calls)"
-  exit 0
-fi
+node "$HERE/change-detect.mjs" --exit-code
+decision=$?
+case "$decision" in
+  0)
+    echo "[mf] inventory unchanged; skipping eval (0 model calls)"
+    exit 0
+    ;;
+  1) ;;
+  *)
+    echo "[mf] change detection failed (exit $decision)" >&2
+    exit 2
+    ;;
+esac
 
 stamp="$(date +%Y%m%d-%H%M%S)"
 out="$OUT_DIR/scorecard.$stamp.json"
@@ -46,9 +51,9 @@ fi
 npx -y "modelfunction-cli@${VERSION}" "${args[@]}"
 code=$?
 
-# Only mark the inventory as evaluated when a scorecard was actually written,
-# so an early crash does not make tomorrow's run skip silently.
-if [ -f "$out" ]; then
+# Only mark the inventory after a successful eval with a scorecard on disk.
+# Regression failures (exit 2) must re-run tomorrow instead of being skipped.
+if [ "$code" -eq 0 ] && [ -f "$out" ]; then
   node "$HERE/change-detect.mjs" --mark >/dev/null
 fi
 exit "$code"

@@ -3,6 +3,37 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.6.1 — 2026-11-06
+
+- New advisory lint rules, both `info` and non-blocking:
+  - `param-optional-imperative`: imperative wording for an optional parameter
+    can suppress the call entirely when the input omits that parameter.
+  - `desc-dangling-tool`: descriptions that reference a tool name absent from
+    the suite, usually left behind by a rename.
+- Authoring guidance in `skills/mf-cases/SKILL.md` now covers named vs generic
+  negation, optional-parameter imperatives, rename references, and phrasing
+  that commits a scope.
+
+## 0.6.0 — 2026-11-06
+
+- Tokens are the primary usage metric: scorecards add `totalTokens` next to
+  `inputTokens` / `cachedTokens` / `outputTokens`.
+- Model registry entries accept `currency` (CNY/USD, default CNY). Scorecards
+  report `totalCost` / `avgCost` with `costCurrency`; `totalCostCny` /
+  `avgCostCny` remain as CNY-only compatibility aliases.
+- `mf eval --max-tokens <n>` stops a run after cumulative input+output tokens
+  cross the limit (exit 2, no partial scorecard). `--max-cost` keeps working
+  and now follows the registry currency.
+- MCP `run_eval` accepts `maxTokens`; the composite action exposes
+  `max-tokens`.
+- `--fail-on-regression` now exits 2 instead of skipping when a baseline model
+  is missing from the new scorecard, or when every reviewed call failed:
+  "cannot determine" is not the same as "no regression".
+- Auto-selected models are reported on stderr with the environment variable
+  that selected them, so a stray key cannot silently route calls elsewhere.
+- Local gate templates use exit-code change detection, update the inventory
+  state only after a successful eval, and ship `.cmd` with CRLF line endings.
+
 ## 0.5.5 — 2026-11-05
 
 - `mf eval --retry <n>` controls retries for HTTP 429/5xx and network errors

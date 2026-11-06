@@ -22,8 +22,11 @@ inputs:
     description: Repeat count per case; majority scoring.
     default: "3"
   max-cost:
-    description: Stop eval after this estimated CNY spend.
+    description: Stop eval after this estimated spend (currency from the models registry).
     default: "1"
+  max-tokens:
+    description: Stop eval after this many input+output tokens. Empty disables it.
+    default: ""
   retry:
     description: Retries per request on HTTP 429/5xx and network errors.
     default: "2"
@@ -41,7 +44,7 @@ inputs:
     default: "true"
   version:
     description: modelfunction-cli version to run.
-    default: "0.5.5"
+    default: "0.6.1"
 
 outputs:
   scorecard:
@@ -76,6 +79,9 @@ runs:
               --out mf-scorecard.json)
         if [ -n "${{ inputs.models-file }}" ]; then
           args+=(--models-file "${{ inputs.models-file }}")
+        fi
+        if [ -n "${{ inputs.max-tokens }}" ]; then
+          args+=(--max-tokens "${{ inputs.max-tokens }}")
         fi
         if [ -n "${{ inputs.baseline }}" ]; then
           args+=(--baseline "${{ inputs.baseline }}" --fail-on-regression)

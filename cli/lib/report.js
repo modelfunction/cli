@@ -1,10 +1,13 @@
 import { pct } from "./score.js";
 import { suiteFingerprint } from "./fingerprint.js";
 
-function money(value, estimated) {
-  if (value === 0) return "0";
+const CURRENCY_SYMBOLS = { CNY: "¥", USD: "$" };
+
+function money(value, estimated, currency = "CNY") {
+  if (!value) return "0";
   const text = value >= 0.01 ? value.toFixed(3) : value.toFixed(4);
-  return `${estimated ? "~" : ""}${text}`;
+  const symbol = CURRENCY_SYMBOLS[currency] ?? `${currency} `;
+  return `${estimated ? "~" : ""}${symbol}${text}`;
 }
 
 function isEstimated(summary) {
@@ -32,7 +35,7 @@ export function formatCaseLines(summary, cases) {
 }
 
 export function formatTable(summaries) {
-  const headers = ["model", "select", "args", "pass", "p50ms", "p95ms", "cny/call", "errors"];
+  const headers = ["model", "select", "args", "pass", "p50ms", "p95ms", "cost/call", "errors"];
   const rows = summaries.map((summary) => [
     summary.model,
     pct(summary.selectionAccuracy),
@@ -40,7 +43,7 @@ export function formatTable(summaries) {
     pct(summary.passRate),
     String(summary.p50LatencyMs),
     String(summary.p95LatencyMs),
-    money(summary.avgCostCny, isEstimated(summary)),
+    money(summary.avgCost ?? summary.avgCostCny, isEstimated(summary), summary.costCurrency ?? "CNY"),
     String(summary.errors)
   ]);
 
@@ -71,8 +74,8 @@ export function formatMarkdown(suite, cases, summaries) {
 
   const withExec = summaries.some((summary) => summary.exec);
   const headers = withExec
-    ? ["model", "select", "args", "pass", "exec", "run p50 ms", "max RSS MB", "p50 ms", "p95 ms", "CNY/call", "errors"]
-    : ["model", "select", "args", "pass", "p50 ms", "p95 ms", "CNY/call", "errors"];
+    ? ["model", "select", "args", "pass", "exec", "run p50 ms", "max RSS MB", "p50 ms", "p95 ms", "cost/call", "errors"]
+    : ["model", "select", "args", "pass", "p50 ms", "p95 ms", "cost/call", "errors"];
   lines.push(`| ${headers.join(" | ")} |`, `| ${headers.map(() => "---").join(" | ")} |`);
 
   for (const summary of summaries) {
@@ -90,7 +93,7 @@ export function formatMarkdown(suite, cases, summaries) {
     cells.push(
       String(summary.p50LatencyMs),
       String(summary.p95LatencyMs),
-      money(summary.avgCostCny, isEstimated(summary)),
+      money(summary.avgCost ?? summary.avgCostCny, isEstimated(summary), summary.costCurrency ?? "CNY"),
       String(summary.errors)
     );
     lines.push(`| ${cells.join(" | ")} |`);

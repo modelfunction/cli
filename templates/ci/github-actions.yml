@@ -24,12 +24,12 @@ jobs:
           node-version: 20
       - name: Lint and audit
         run: |
-          npx -y modelfunction-cli@0.5.5 lint --suite mf.suite.json
-          npx -y modelfunction-cli@0.5.5 audit --suite mf.suite.json --out mf-audit.md
+          npx -y modelfunction-cli@0.6.1 lint --suite mf.suite.json
+          npx -y modelfunction-cli@0.6.1 audit --suite mf.suite.json --out mf-audit.md
       # Same static gate as action.yml: confusable families are the earliest
       # warning signal for new tool sets, so the template checks them too.
       - name: Cluster (confusable families)
-        run: npx -y modelfunction-cli@0.5.5 cluster --suite mf.suite.json --json > mf-cluster.json
+        run: npx -y modelfunction-cli@0.6.1 cluster --suite mf.suite.json --json > mf-cluster.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,7 +59,7 @@ jobs:
         # produced with --repeat 3.
         continue-on-error: true
         run: |
-          npx -y modelfunction-cli@0.5.5 eval \
+          npx -y modelfunction-cli@0.6.1 eval \
             --suite mf.suite.json \
             --models dsv4-flash \
             --repeat 3 \
@@ -76,7 +76,7 @@ jobs:
       # .mf/baseline.json, then enable this step.
       # - name: Regression gate
       #   run: |
-      #     npx -y modelfunction-cli@0.5.5 eval \
+      #     npx -y modelfunction-cli@0.6.1 eval \
       #       --suite mf.suite.json \
       #       --models dsv4-flash \
       #       --repeat 3 \

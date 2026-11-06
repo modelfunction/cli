@@ -182,6 +182,46 @@ function compareProfiles(before, after) {
   };
 }
 
+export function regressionGate(comparison, summaries = []) {
+  const missing = comparison.models.filter((model) => model.reason === "模型不在新报告中");
+  if (missing.length > 0) {
+    return {
+      status: "fail",
+      message: `baseline model(s) not in this report: ${missing.map((model) => model.model).join(", ")}；无法判定回归（门禁失败）`
+    };
+  }
+
+  const errored = summaries.filter(
+    (summary) => summary.reviewedTotal > 0 && summary.errors === summary.reviewedTotal
+  );
+  if (errored.length > 0) {
+    const detail = errored
+      .map((summary) => {
+        const kinds = summary.errorsByKind && Object.keys(summary.errorsByKind).length
+          ? ` ${JSON.stringify(summary.errorsByKind)}`
+          : "";
+        return `${summary.model} (${summary.errors}/${summary.reviewedTotal}${kinds})`;
+      })
+      .join(", ");
+    return {
+      status: "fail",
+      message: `all calls failed for: ${detail}；基础设施故障，无法判定回归（门禁失败）`
+    };
+  }
+
+  const comparable = comparison.models.filter((model) => model.comparable && model.reviewed > 0);
+  if (comparable.length === 0) {
+    return { status: "skip", message: "定义或用例已变更，无法判定回归（门禁跳过）" };
+  }
+
+  return {
+    status: "ok",
+    regressions: comparable.flatMap((model) =>
+      model.regressions.map((item) => `${model.model}/${item.id}`)
+    )
+  };
+}
+
 export function formatCompare(report) {
   const lines = [];
   if (!report.beforeHash || !report.afterHash) {
