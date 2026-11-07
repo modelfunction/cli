@@ -76,7 +76,7 @@ Usage:
   mf audit [--suite <file>] [--out <file>] [--json]  # 静态审计：lint + 分组边界 + 用例覆盖 + 挂载
   mf lint [--suite <file>] [--json]  # 静态检查 tools 与 skills，不调用模型
   mf check (--manifest <file> | --manifests <file>) [--installed <file>] [--json]  # 安装门禁：新能力 × 已装能力（--manifests 支持一包）
-  mf compare <before.json> <after.json> [--json]
+  mf compare <before.json> <after.json> [--fail-on-regression] [--json]
   mf ablate --tool <name> [--suite <file>] [--profile <group>] [--models <ids>] [--max-cost <amount>] [--max-tokens <n>] [--progress] [--json]
   mf cluster [--suite <file>] [--threshold <0.5>] [--max-size <10>] [--out <file>] [--json]  # 建议挂载分组 + 同族候选
   mf exec --entry <file> (--input <json> | --input-json <json>) [--runtime node|python] [--python <cmd>] [--export run] [--allow-read <paths>] [--allow-write <paths>] [--allow-net <hosts>] [--timeout <ms>] [--warmup <n>] [--json]
@@ -659,6 +659,13 @@ export async function runCompare(options, io = console) {
   const after = JSON.parse(await readFile(resolve(afterPath), "utf8"));
   const report = compareScorecards(before, after);
   io.log(options.json ? JSON.stringify(report, null, 2) : formatCompare(report));
+  const regressions = report.models
+    .filter((model) => model.comparable && model.reviewed > 0)
+    .flatMap((model) => (model.regressions ?? []).map((item) => `${model.model}/${item.id}`));
+  if (options.failOnRegression && regressions.length > 0) {
+    io.error(`regressions: ${regressions.join(", ")}`);
+    return 2;
+  }
   const changed = report.toolChanges.length > 0 || report.caseChanges.length > 0;
   return changed ? 1 : 0;
 }
@@ -1285,12 +1292,16 @@ if (isMain) {
   } else if (argv[0] === "compare") {
     const paths = argv.slice(1).filter((arg) => !arg.startsWith("--"));
     if (paths.length !== 2) {
-      process.stderr.write("usage: mf compare <before.json> <after.json> [--json]\n");
+      process.stderr.write("usage: mf compare <before.json> <after.json> [--fail-on-regression] [--json]\n");
       process.exit(1);
     }
     commandName = "compare";
     try {
-      const code = await runCompare({ paths, json: argv.includes("--json") });
+      const code = await runCompare({
+        paths,
+        json: argv.includes("--json"),
+        failOnRegression: argv.includes("--fail-on-regression")
+      });
       process.exit(code);
     } catch (error) {
       process.stderr.write(`${redactText(error?.message ?? error)}\n`);

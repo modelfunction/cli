@@ -33,6 +33,7 @@ export function compareScorecards(before, after) {
     const confusionCounts = new Map();
     const interferenceMap = new Map();
     let reviewed = 0;
+    let excluded = 0;
     let selectionBefore = 0;
     let selectionAfter = 0;
     let passBefore = 0;
@@ -42,6 +43,10 @@ export function compareScorecards(before, after) {
       const rowBefore = rowsBefore.get(id);
       const rowAfter = rowsAfter.get(id);
       if (rowBefore.reviewed === false || rowAfter.reviewed === false) continue;
+      if (rowBefore.excludeFromBase || rowAfter.excludeFromBase) {
+        excluded += 1;
+        continue;
+      }
       reviewed += 1;
       if (rowBefore.selectionCorrect) selectionBefore += 1;
       if (rowAfter.selectionCorrect) selectionAfter += 1;
@@ -109,6 +114,7 @@ export function compareScorecards(before, after) {
       comparable: toolChanges.length === 0 && caseChanges.length === 0 && !executionChanged,
       commonCases: comparableIds.length,
       reviewed,
+      excluded,
       metrics: {
         selection: { before: ratio(selectionBefore, reviewed), after: ratio(selectionAfter, reviewed) },
         pass: { before: ratio(passBefore, reviewed), after: ratio(passAfter, reviewed) }
@@ -246,6 +252,9 @@ export function formatCompare(report) {
     }
     lines.push(`[${model.model}] ${model.comparable ? "可比较" : "不可直接比较（工具定义或用例已变更）"}`);
     lines.push(`  共同且未变更用例: ${model.commonCases}（已复核 ${model.reviewed}）`);
+    if (model.excluded > 0) {
+      lines.push(`  排除出回归判定: ${model.excluded} 条（excludeFromBase）`);
+    }
     lines.push(`  选择准确率: ${percent(model.metrics.selection.before)} → ${percent(model.metrics.selection.after)}`);
     lines.push(`  通过率:     ${percent(model.metrics.pass.before)} → ${percent(model.metrics.pass.after)}`);
     if (model.interference.length > 0) {

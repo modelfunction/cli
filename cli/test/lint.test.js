@@ -303,7 +303,7 @@ test("lint flags imperative wording aimed at optional params", () => {
     tools: [
       {
         name: "create_report",
-        description: "当用户需要生成报告时使用。Pass a concise title for the report.",
+        description: "当用户需要生成报告时使用。Pass a concise report title via the title parameter.",
         parameters: {
           type: "object",
           properties: {
@@ -389,4 +389,58 @@ test("lint does not flag references to tools that exist", () => {
     lintSuite(suite).findings.filter((item) => item.code === "desc-dangling-tool").length,
     0
   );
+});
+
+test("lint does not treat noun phrases or tool actions as optional-param imperatives", () => {
+  const suite = {
+    tools: [
+      {
+        name: "sessions_history",
+        description: "当用户需要查看会话历史时使用。",
+        parameters: {
+          type: "object",
+          properties: {
+            includeTools: { type: "boolean", description: "Include tool messages" }
+          }
+        }
+      },
+      {
+        name: "sessions_send",
+        description: "Send message to a visible session by sessionKey/label.",
+        parameters: {
+          type: "object",
+          properties: {
+            sessionKey: { type: "string", description: "Session key" }
+          }
+        }
+      }
+    ]
+  };
+  assert.equal(
+    lintSuite(suite).findings.filter((item) => item.code === "param-optional-imperative").length,
+    0
+  );
+});
+
+test("lint checks every occurrence of an optional parameter name", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_report",
+        description:
+          "Write an HTML report (a formatted webpage with title, sections, and optional charts). Pass a concise report title via the title parameter.",
+        parameters: {
+          type: "object",
+          properties: {
+            body: { type: "string", description: "报告正文" },
+            title: { type: "string", description: "Optional report title" }
+          },
+          required: ["body"]
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "param-optional-imperative");
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].param, "title");
 });

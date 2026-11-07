@@ -36,6 +36,23 @@ export function extractJsTools(src, { externals, onUnresolvedName } = {}) {
     const parsed = parseArgs(src, match.index + match[0].length - 1);
     if (parsed) push(toolFromArgs(parsed.items, ctx));
   }
+  // Plugin registries (e.g. anything-llm) call `aibitat.function({ name,
+  // description, parameters })` inside a setup hook instead of a builder.
+  for (const match of src.matchAll(/\.function\s*\(/g)) {
+    const parsed = parseArgs(src, match.index + match[0].length - 1);
+    if (!parsed || !parsed.items[0] || parsed.items[0].t !== "obj") continue;
+    const node = parsed.items[0];
+    const preset = {};
+    const nameNode = node.props.get("name");
+    if (!nameNode || nameNode.t !== "str") {
+      // Plugin registries often write `name: this.name` inside the setup hook;
+      // the literal lives on the enclosing plugin object just above it.
+      const before = src.slice(Math.max(0, match.index - 2000), match.index);
+      const names = [...before.matchAll(/name\s*:\s*["']([^"']+)["']/g)];
+      if (names.length > 0) preset.name = names[names.length - 1][1];
+    }
+    push(toolFromObject(node, ctx, preset));
+  }
   for (const match of src.matchAll(/(?<![.\w$])registerTool\s*\(/g)) {
     const parsed = parseArgs(src, match.index + match[0].length - 1);
     if (parsed) push(toolFromArgs(parsed.items, ctx));

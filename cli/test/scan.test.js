@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { scanProject, buildSuiteDraft } from "../lib/scan.js";
+import { scanProject, buildSuiteDraft, scanPythonClassTools } from "../lib/scan.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MF = resolve(HERE, "../mf.js");
@@ -322,6 +322,66 @@ test("scan exits 0 when a project only has skills", async () => {
     assert.equal(result.code, 0, result.stderr);
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.report.skills.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scan extracts class-based Tool subclasses", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-class-tools-"));
+  try {
+    await mkdir(join(root, "tools"), { recursive: true });
+    await writeFile(
+      join(root, "tools", "python_tool.py"),
+      [
+        "class PythonInterpreterTool(Tool):",
+        '    name = "python_interpreter"',
+        '    description = "Evaluates python code."',
+        "    inputs = {",
+        '        "code": {"type": "string", "description": "Code to run"},',
+        '        "timeout": {"type": "integer", "description": "Seconds"},',
+        "    }",
+        "",
+        "    def forward(self, code: str, timeout: int = 30):",
+        "        return code"
+      ].join("\n"),
+      "utf8"
+    );
+    const report = await scanProject(root);
+    const tool = report.tools.find((item) => item.name === "python_interpreter");
+    assert.ok(tool, "class-based Tool should be extracted");
+    assert.equal(tool.parameters.properties.code.type, "string");
+    assert.equal(tool.parameters.properties.code.description, "Code to run");
+    assert.equal(tool.parameters.properties.timeout.type, "number");
+    assert.equal(scanPythonClassTools("class X(Tool):\n    name = \"x\"\n").length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scan extracts registry.action decorators", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-action-tools-"));
+  try {
+    await writeFile(
+      join(root, "actions.py"),
+      [
+        "@self.registry.action('Go back', param_model=NoParamsAction)",
+        "async def go_back(_: NoParamsAction, browser_session: BrowserSession):",
+        "    return 'back'",
+        "",
+        "@self.registry.action('Wait for x seconds.')",
+        "async def wait(seconds: int = 3):",
+        "    return seconds"
+      ].join("\n"),
+      "utf8"
+    );
+    const report = await scanProject(root);
+    const goBack = report.tools.find((item) => item.name === "go_back");
+    const wait = report.tools.find((item) => item.name === "wait");
+    assert.ok(goBack, "registry.action decorator should be extracted");
+    assert.equal(goBack.description, "Go back");
+    assert.ok(wait);
+    assert.equal(wait.parameters.properties.seconds.type, "number");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
