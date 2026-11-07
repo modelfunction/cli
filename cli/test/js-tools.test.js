@@ -126,6 +126,35 @@ test("resolves lazySchema factories, accessors and cross-module name constants",
   assert.deepEqual(tools[0].parameters.properties.value.type, ["string", "boolean"]);
 });
 
+test("extracts plugin function registrations", () => {
+  const src = `
+    module.exports.X = {
+      name: "filesystem-read-text-file",
+      plugin: function () {
+        return {
+          name: "filesystem-read-text-file",
+          setup(aibitat) {
+            aibitat.function({
+              name: this.name,
+              description: "Read a file from the filesystem.",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string", description: "File path" } },
+                required: ["path"]
+              }
+            });
+          }
+        };
+      }
+    };
+  `;
+  const tools = extractJsTools(src);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, "filesystem-read-text-file");
+  assert.equal(tools[0].parameters.properties.path.description, "File path");
+  assert.deepEqual(tools[0].parameters.required, ["path"]);
+});
+
 test("marks method-generated descriptions as runtime-provided", () => {
   const src = `
     export const ConfigTool = buildTool({

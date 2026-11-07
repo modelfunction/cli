@@ -61,10 +61,14 @@ const NO_BOUNDARY_SIMILARITY = 0.5;
 // names in sibling descriptions. Both are info-only; they depend on wording.
 const OPTIONAL_HINT =
   /(可选|optional|非必填|如有|如果需要|可提供|if [^.\n]{0,30}\b(provided|available|present|omitted)\b|when [^.\n]{0,30}\b(provided|available|present)\b)/i;
-const IMPERATIVE_EN = /\b(pass|provide|supply|include|set|specify|add|send|put)\b/i;
 const IMPERATIVE_ZH = /(传入|传|提供|带上|设置|指定|填写|附上|注明)/;
-const IMPERATIVE_START_EN = /^(pass|provide|supply|include|set|specify|add|send|put)\b/i;
+// `Include tool messages` is a noun-phrase switch description, not an
+// imperative; `include` stays out of the start-of-description list.
+const IMPERATIVE_START_EN = /^(pass|provide|supply|set|specify|add|send|put)\b/i;
 const IMPERATIVE_START_ZH = /^(传入|传|提供|带上|设置|指定|填写|附上|注明)/;
+// English descriptions routinely start with the tool's own action
+// ("Send message to ... by sessionKey"). Require an explicit parameter link
+// ("... via the title parameter") so tool behaviour is not read as guidance.
 const BACKTICK_ID = /`([a-z][a-z0-9_-]{2,})`/g;
 const SNAKE_ID = /\b([a-z][a-z0-9]*(?:_[a-z0-9]+)+)\b/g;
 const NON_TOOL_SUFFIX =
@@ -89,11 +93,30 @@ function escapeRegExp(value) {
 
 function mentionsImperatively(text, name) {
   if (!text || !name) return false;
-  const index = text.indexOf(name);
-  if (index === -1) return false;
-  const around = text.slice(Math.max(0, index - 40), Math.min(text.length, index + name.length + 40));
-  if (OPTIONAL_HINT.test(around)) return false;
-  return IMPERATIVE_EN.test(around) || IMPERATIVE_ZH.test(around);
+  let index = text.indexOf(name);
+  while (index !== -1) {
+    const around = text.slice(Math.max(0, index - 80), Math.min(text.length, index + name.length + 80));
+    // "optional charts" earlier in a long description must not mask a real
+    // imperative later. Only a hint next to this occurrence exempts it.
+    const optionalAround = text.slice(
+      Math.max(0, index - 30),
+      Math.min(text.length, index + name.length + 30)
+    );
+    if (!OPTIONAL_HINT.test(optionalAround)) {
+      if (explicitImperativeEnglish(around, name) || IMPERATIVE_ZH.test(around)) return true;
+    }
+    index = text.indexOf(name, index + name.length);
+  }
+  return false;
+}
+
+function explicitImperativeEnglish(text, name) {
+  const escaped = escapeRegExp(name);
+  const pattern = new RegExp(
+    `\\b(pass|provide|supply|set|specify|add|send|put)\\b[^.!?\\n]{0,80}(?:^|[^A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])[^.!?\\n]{0,40}\\b(parameter|param|argument|field|option)\\b`,
+    "i"
+  );
+  return pattern.test(text);
 }
 
 function startsImperatively(text) {

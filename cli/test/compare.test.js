@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { toolFingerprint, caseFingerprint, suiteFingerprint } from "../lib/fingerprint.js";
 import { compareScorecards, formatCompare, regressionGate } from "../lib/compare.js";
+import { runCompare } from "../mf.js";
 
 function row({ id = "c1", selectionCorrect = true, passed = true, matched = 1, total = 1, reviewed = true } = {}) {
   return {
@@ -49,6 +53,66 @@ test("regressionGate lists regressions for comparable models", () => {
   const gate = regressionGate(comparison, []);
   assert.equal(gate.status, "ok");
   assert.deepEqual(gate.regressions, ["M/c1"]);
+});
+
+function sameFingerprint() {
+  return {
+    hash: "same",
+    tools: [{ name: "a", hash: "t1" }],
+    cases: [{ id: "c1", hash: "c1" }]
+  };
+}
+
+test("compare ignores excludeFromBase rows for regression metrics", () => {
+  const fingerprint = sameFingerprint();
+  const before = {
+    suite: { fingerprint },
+    models: [{ model: "m", rows: [{ ...row(), excludeFromBase: true }] }]
+  };
+  const after = {
+    suite: { fingerprint },
+    models: [
+      {
+        model: "m",
+        rows: [{ ...row({ selectionCorrect: false, passed: false }), excludeFromBase: true }]
+      }
+    ]
+  };
+  const report = compareScorecards(before, after);
+  const model = report.models[0];
+  assert.equal(model.excluded, 1);
+  assert.equal(model.reviewed, 0);
+  assert.equal(model.regressions.length, 0);
+  assert.match(formatCompare(report), /excludeFromBase/);
+});
+
+test("compare --fail-on-regression exits 2 on a comparable regression", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mf-compare-"));
+  try {
+    const fingerprint = sameFingerprint();
+    const before = {
+      suite: { fingerprint },
+      models: [{ model: "m", rows: [row()] }]
+    };
+    const after = {
+      suite: { fingerprint },
+      models: [{ model: "m", rows: [row({ selectionCorrect: false, passed: false })] }]
+    };
+    const beforePath = join(dir, "before.json");
+    const afterPath = join(dir, "after.json");
+    await writeFile(beforePath, JSON.stringify(before), "utf8");
+    await writeFile(afterPath, JSON.stringify(after), "utf8");
+    const errors = [];
+    const io = { log: () => {}, error: (line) => errors.push(String(line)) };
+    const code = await runCompare(
+      { paths: [beforePath, afterPath], json: true, failOnRegression: true },
+      io
+    );
+    assert.equal(code, 2);
+    assert.match(errors.join("\n"), /regressions: m\/c1/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 function profileReport(hash, mountedAccuracy, allAccuracy) {

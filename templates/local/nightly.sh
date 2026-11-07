@@ -6,7 +6,7 @@
 # The API key itself comes from the environment, e.g. MODEL_API_KEY=...
 set -uo pipefail
 
-VERSION="${MF_VERSION:-0.6.1}"
+VERSION="${MF_VERSION:-0.6.2}"
 SUITE="${MF_SUITE:-mf.suite.json}"
 MODELS="${MF_MODELS:-mf.models.json}"
 OUT_DIR="${MF_NIGHTLY_DIR:-.mf/nightly}"

@@ -116,6 +116,7 @@ skills 只做静态检查，不参与模型评测。
 - `--repeat` 时模型对象带 `stability`（翻转用例与多次结果分布）。
 - `--profile` 时每个组含 `profile`、`mounted`、`allInOne`、`delta`、`lifted`、`jammed`、`errors`，以及 `usage`（`inputTokens` / `cachedTokens` / `outputTokens` / `totalTokens` / `cost` / `costCurrency`；CNY 时另带 `costCny`）；错误行不参与挂载对比（不会被记成 jammed），每个组的 `reviewed` 是可评分行数。
 - `fingerprint` 由工具与用例内容计算；`mf compare` 用它判断两份报告是否可比。
+- `mf compare` 与 `--fail-on-regression` 会跳过任一报告中标了 `excludeFromBase` 的行；对比结果里的 `excluded` 给出跳过的行数。这些行既不参与回归判定，也不进入对比指标。
 
 ## 3. 扫描输出（`mf scan`）
 
@@ -144,7 +145,7 @@ report：`root`、`tools[]`（`name` / `description` / `parameters` / `origin` /
 - `param` 出现在参数级发现上；`pair` 出现在工具对/技能对发现上；`ref` / `similarTo` 出现在悬空工具名引用上。
 - `profilePairs` 只在套件含 `profiles` 时出现。
 - 0.6.1 新增两条 advisory（均为 `info`，不影响 `check()` 的 pass/warn）：
-  - `param-optional-imperative`：可选参数的描述用了祈使句；用户输入没提供该参数时可能抑制调用。
+  - `param-optional-imperative`：可选参数的描述用了祈使句；用户输入没提供该参数时可能抑制调用。0.6.2 起扫描参数名的所有出现位置，英文只认显式“参数/parameter”搭配，名词短语（`Include tool messages`）与工具自身动作（`Send message ... by sessionKey`）不再误报。
   - `desc-dangling-tool`：描述引用了套件中不存在的工具名；`similarTo` 给出共享领域词的现有工具，通常来自改名后遗留的引用。
 
 ## 5. cluster JSON（`mf cluster --json`）
@@ -243,7 +244,7 @@ const result = checkMany({ manifests: [/* ... */], installed: [/* ... */] });
 | --- | --- |
 | 0 | 成功（`mf check` 的 warn 也是 0） |
 | 1 | 输入/用法错误；`mf compare` 判定不可直接比较 |
-| 2 | `mf eval --fail-under` 未达标、`--fail-on-regression` 发现回退或无法判定（基线模型缺失、本轮全部调用失败）、`--max-cost` / `--max-tokens` 超限 |
+| 2 | `mf eval --fail-under` 未达标、`--fail-on-regression` 发现回退或无法判定（基线模型缺失、本轮全部调用失败）、`--max-cost` / `--max-tokens` 超限；`mf compare --fail-on-regression` 发现回归 |
 | 3 | `mf exec` 被权限策略拒绝；`mf scan --json` 未找到工具或 skill |
 | 4 | `mf exec` 超时 |
 

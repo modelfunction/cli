@@ -16,10 +16,21 @@ const SKIP_DIRS = new Set([
   "__pycache__",
   ".idea",
   ".turbo",
-  ".cache"
+  ".cache",
+  // Not part of the agent's tool surface: generated API specs, examples and
+  // test fixtures otherwise look like tools and dominate the report.
+  "examples",
+  "example",
+  "tests",
+  "test",
+  "e2e",
+  "fixtures",
+  "swagger"
 ]);
 
-const MAX_DEPTH = 6;
+// Monorepo tool registries often sit 7–8 levels deep
+// (server/utils/agents/<framework>/plugins/<plugin>/file.js).
+const MAX_DEPTH = 8;
 // 5k was too small: a real agent monorepo (openclaw) has 16k files after the
 // skip list, so the walk stopped a third of the way in and reported 26 of its
 // 53 skills. Silent partial results are worse than a slow scan.
@@ -58,6 +69,7 @@ const CODE_PATTERNS = [
   { label: "registerTool", confidence: "medium", re: /registerTool\s*\(\s*["'`]([\w.-]+)["'`]/ },
   { label: "server.tool", confidence: "medium", re: /\.tool\s*\(\s*["'`]([\w.-]+)["'`]/ },
   { label: "py-tool-decorator", confidence: "low", re: /^\s*@tool\b/ },
+  { label: "py-action-decorator", confidence: "medium", re: /^\s*@(?:self\.)?registry\.action\s*\(/ },
   { label: "vercel-tool-call", confidence: "low", re: /\btool\s*\(\s*\{/ },
   { label: "openai-tools-array", confidence: "low", re: /\btools\s*:\s*\[\s*\{/ },
   { label: "anthropic-input-schema", confidence: "low", re: /\binput_?schema\s*:/ }
@@ -231,13 +243,17 @@ export async function scanProject(root = ".") {
       const text = await readText(file, report);
       if (!text) continue;
       if (name.endsWith(".py") && !TEST_PATH.test(rel)) {
-        const pythonTools = scanPythonTools(text);
+        const pythonTools = [
+          ...scanPythonTools(text),
+          ...scanPythonClassTools(text),
+          ...scanPythonActionDecorators(text)
+        ];
         if (pythonTools.length > 0) {
           addTools(report, pythonTools, {
             source: rel,
             origin: "py-tool",
             confidence: "medium",
-            note: "从 @tool 装饰器与类型注解提取，需人工确认"
+            note: "从 @tool 装饰器、类型注解或 class-based Tool 提取，需人工确认"
           });
         }
       }
@@ -648,6 +664,168 @@ export function scanPythonTools(text) {
     i = signature.endLine;
   }
   return tools;
+}
+
+// Class-based tools: smolagents-style `class X(Tool)` with `name`,
+// `description` and an `inputs` dict. Static only; never executes the class.
+export function scanPythonClassTools(text) {
+  const lines = text.split(/\r?\n/);
+  const tools = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const classMatch = lines[i].match(/^(\s*)class\s+\w+\s*\(\s*Tool\s*\)\s*:/);
+    if (!classMatch) continue;
+    const indent = classMatch[1].length;
+    let end = i + 1;
+    for (; end < lines.length; end += 1) {
+      const line = lines[end];
+      if (!line.trim()) continue;
+      if (line.match(/^\s*/)[0].length <= indent) break;
+    }
+    const joined = lines.slice(i + 1, end).join("\n");
+    const nameMatch = joined.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
+    if (!nameMatch) continue;
+    tools.push({
+      name: nameMatch[1],
+      description: pythonAttrString(joined, "description") || pythonDocstring(lines, i),
+      parameters: {
+        type: "object",
+        properties: pythonInputs(joined)
+      }
+    });
+    i = end;
+  }
+  return tools;
+}
+
+// Registry actions: browser-use-style `@registry.action("desc", param_model=…)`
+// above an async function. The model class is usually in another file, so the
+// schema is limited to literal function parameters; name + description are
+// still useful for inventory and description lint.
+export function scanPythonActionDecorators(text) {
+  const lines = text.split(/\r?\n/);
+  const tools = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const decorator = lines[i].match(/^\s*@(?:self\.)?registry\.action\s*\(/);
+    if (!decorator) continue;
+    const signature = collectSignature(lines, i, decorator[0].length);
+    if (signature === null) continue;
+    const description = firstPythonString(signature.text);
+    let j = signature.endLine + 1;
+    while (j < lines.length && j - signature.endLine <= 6 && !/^\s*(?:async\s+)?def\s+\w+\s*\(/.test(lines[j])) j += 1;
+    const def = lines[j]?.match(/^\s*(?:async\s+)?def\s+(\w+)\s*\(/);
+    if (!def) continue;
+    const args = collectSignature(lines, j, def[0].length);
+    const properties = {};
+    if (args !== null) {
+      for (const part of splitPyParams(args.text)) {
+        const param = parsePyParam(part);
+        if (!param || param.name === "_" || param.name.startsWith("_")) continue;
+        if (["params", "browser_session", "context", "self", "cls"].includes(param.name)) continue;
+        properties[param.name] = param.schema;
+      }
+    }
+    tools.push({
+      name: def[1],
+      description: description || pythonDocstring(lines, j),
+      parameters: { type: "object", properties }
+    });
+    i = args?.endLine ?? signature.endLine;
+  }
+  return tools;
+}
+
+function firstPythonString(text) {
+  const triple = text.match(/(?:[rRuU])?("""|''')([\s\S]*?)\1/);
+  if (triple) {
+    return triple[2].split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0] ?? "";
+  }
+  const single = text.match(/(?:[rRuU])?["']([^"'\n]*)["']/);
+  return single ? single[1] : "";
+}
+
+function pythonAttrString(text, attr) {
+  const triple = text.match(new RegExp(`^\\s*${attr}\\s*=\\s*(?:[rRuU])?("""|''')([\\s\\S]*?)\\1`, "m"));
+  if (triple) {
+    return triple[2].split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0] ?? "";
+  }
+  const single = text.match(new RegExp(`^\\s*${attr}\\s*=\\s*["']([^"']*)["']`, "m"));
+  return single ? single[1] : "";
+}
+
+function pythonInputs(text) {
+  const start = text.search(/^\s*inputs\s*=\s*\{/m);
+  if (start === -1) return {};
+  const open = text.indexOf("{", start);
+  const block = balancedBraces(text, open);
+  if (!block) return {};
+  const properties = {};
+  for (const match of block.matchAll(/["']([\w-]+)["']\s*:\s*\{([\s\S]*?)\}/g)) {
+    const schema = {};
+    const type = match[2].match(/["']type["']\s*:\s*["']([^"']+)["']/);
+    const description = match[2].match(/["']description["']\s*:\s*["']([^"']*)["']/);
+    const mapped = type ? mapPythonInputType(type[1]) : null;
+    if (mapped) schema.type = mapped;
+    if (description) schema.description = description[1];
+    properties[match[1]] = schema;
+  }
+  return properties;
+}
+
+function balancedBraces(text, openIndex) {
+  if (openIndex < 0) return null;
+  let depth = 0;
+  let quote = null;
+  let triple = null;
+  for (let i = openIndex; i < text.length; i += 1) {
+    const char = text[i];
+    const rest = text.slice(i, i + 3);
+    if (triple) {
+      if (rest === triple) {
+        i += 2;
+        triple = null;
+      }
+      continue;
+    }
+    if (quote) {
+      if (char === "\\") {
+        i += 1;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (rest === '"""' || rest === "'''") {
+      i += 2;
+      triple = rest;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "#") {
+      const newline = text.indexOf("\n", i);
+      if (newline === -1) break;
+      i = newline;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(openIndex + 1, i);
+    }
+  }
+  return null;
+}
+
+function mapPythonInputType(type) {
+  const value = String(type).toLowerCase();
+  if (["string", "str", "text"].includes(value)) return "string";
+  if (["integer", "int", "number", "float"].includes(value)) return "number";
+  if (["boolean", "bool"].includes(value)) return "boolean";
+  if (["array", "list"].includes(value)) return "array";
+  if (["object", "dict"].includes(value)) return "object";
+  return null;
 }
 
 function collectSignature(lines, startLine, offset) {

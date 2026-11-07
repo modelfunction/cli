@@ -3,6 +3,19 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.6.2 — 2026-11-08
+
+- `param-optional-imperative` no longer treats noun phrases ("Include tool
+  messages") or a tool's own action ("Send message ... by sessionKey") as
+  imperative guidance. It scans every occurrence of the parameter name and
+  requires an explicit parameter link.
+- `mf compare` now honours `excludeFromBase` in regression and metric
+  comparisons, with an `excluded` count in the report; excluded rows no longer
+  count as regressions.
+- `mf compare --fail-on-regression` exits 2 on a comparable regression, so a
+  standalone compare step can fail CI. Default exit-code semantics (suite
+  changes only) are unchanged.
+
 ## 0.6.1 — 2026-11-06
 
 - New advisory lint rules, both `info` and non-blocking:
