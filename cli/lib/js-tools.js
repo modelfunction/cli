@@ -132,10 +132,13 @@ function toolFromObject(node, ctx, preset = {}) {
     node.props.has("isEnabled") ||
     node.props.has("searchHint");
   if (!description && Object.keys(schema.properties ?? {}).length === 0 && !toolish) return undefined;
-  // Claude-style tools build the description in `async description()` or a
-  // prompt template; lint must not call that "missing".
+  // Claude-style tools build the description in `async description()`, a
+  // template string, or a constant the parser cannot resolve; lint must not
+  // call that "missing". A literal empty string is still missing.
   const descNode = node.props.get("description");
-  const runtimeDescription = !description && (descNode?.t === "unknown" || node.props.has("prompt"));
+  const runtimeDescription =
+    !description &&
+    ((descNode !== undefined && descNode.t !== "str") || node.props.has("prompt"));
   return { name, description, parameters: schema, ...(runtimeDescription ? { descriptionSource: "runtime" } : {}) };
 }
 

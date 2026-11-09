@@ -83,7 +83,8 @@ const ACTION_TOKENS = new Set([
   "fetch", "query", "run", "exec", "execute", "open", "close", "add", "remove", "check",
   "scan", "parse", "score", "match", "generate", "render", "save", "load", "find", "lookup",
   "call", "invoke", "publish", "edit", "rewrite", "analyze", "analyse", "summarize",
-  "summarise", "translate", "tool", "tools", "info", "data", "result", "results", "item",
+  "summarise", "translate", "copy", "move", "mark", "reply", "download", "upload",
+  "tool", "tools", "info", "data", "result", "results", "item",
   "items", "skill", "skills", "mcp"
 ]);
 
@@ -130,6 +131,25 @@ function referencedNames(text) {
   for (const match of String(text ?? "").matchAll(BACKTICK_ID)) found.add(match[1]);
   for (const match of String(text ?? "").matchAll(SNAKE_ID)) found.add(match[1]);
   return found;
+}
+
+function familySibling(a, b) {
+  const aTokens = nameTokens(a);
+  const bTokens = nameTokens(b);
+  if (aTokens.length === 0 || bTokens.length === 0) return null;
+  const family = aTokens[0] === bTokens[0] ? aTokens[0] : null;
+  // `search_docs` × `search_wiki` share an action verb, not a product family;
+  // those still warrant a boundary. A family prefix is a domain noun.
+  if (!family || ACTION_TOKENS.has(family)) return null;
+  const aSet = new Set(aTokens);
+  const bSet = new Set(bTokens);
+  const uniqueA = aTokens.filter((token) => !bSet.has(token));
+  const uniqueB = bTokens.filter((token) => !aSet.has(token));
+  // Both sides must carry a distinct action token. Same-domain tools with
+  // different objects can still be confusable (`events_poll` × `events_wait`).
+  if (!uniqueA.some((token) => ACTION_TOKENS.has(token))) return null;
+  if (!uniqueB.some((token) => ACTION_TOKENS.has(token))) return null;
+  return { family, a: uniqueA.join("/"), b: uniqueB.join("/") };
 }
 
 function sharedDomainToken(candidate, toolNames) {
@@ -344,10 +364,23 @@ export function lintSuite(suite, { pairScope } = {}) {
       const tool = toolByName.get(name);
       return BOUNDARY_HINT.test(tool?.description ?? "");
     });
+    const sibling = familySibling(pair.a, pair.b);
     if (declaresBoundary) {
       add("info", "pair-overlap", pair.a, `与 ${pair.b} 的描述相似度 ${similarity}，已写互斥边界`, {
         pair: [pair.a, pair.b]
       });
+    } else if (sibling) {
+      add(
+        "info",
+        "pair-family-sibling",
+        pair.a,
+        `与 ${pair.b} 同族（共享 ${sibling.family}，区分词 ${sibling.a} vs ${sibling.b}），描述相近但动作/对象不同`,
+        {
+          pair: [pair.a, pair.b],
+          family: sibling.family,
+          suggestion: `确认 ${pair.a} 与 ${pair.b} 的 description 各自写清动作区别；同族分开挂载通常没问题`
+        }
+      );
     } else if (pair.similarity >= NO_BOUNDARY_SIMILARITY) {
       const aGroups = toolGroups.get(pair.a) ?? [];
       const bGroups = toolGroups.get(pair.b) ?? [];

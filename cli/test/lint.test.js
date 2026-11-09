@@ -268,6 +268,11 @@ test("formatLint folds a repeated rule into one block", () => {
     description: "短",
     parameters: { type: "object", properties: {} }
   }));
+  tools.push({
+    name: "ConfigTool",
+    description: "当用户需要读取配置时使用，返回配置内容。",
+    parameters: { type: "object", properties: { setting: { type: "string", description: "键" } } }
+  });
   const text = formatLint(lintSuite({ tools }));
   assert.match(text, /重复问题/);
   assert.match(text, /desc-no-when × 5/);
@@ -420,6 +425,41 @@ test("lint does not treat noun phrases or tool actions as optional-param imperat
     lintSuite(suite).findings.filter((item) => item.code === "param-optional-imperative").length,
     0
   );
+});
+
+test("family tools with distinct actions are siblings, not boundary hazards", () => {
+  const tool = (name, description) => ({
+    name,
+    description,
+    parameters: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "file path" },
+        content: { type: "string", description: "file content" }
+      }
+    }
+  });
+  const report = lintSuite({
+    tools: [
+      tool("filesystem-copy-file", "Copy a file to a new location."),
+      tool("filesystem-move-file", "Move a file to a new location.")
+    ]
+  });
+  const sibling = report.findings.filter((item) => item.code === "pair-family-sibling");
+  assert.equal(sibling.length, 1);
+  assert.equal(sibling[0].severity, "info");
+  assert.equal(report.findings.filter((item) => item.code === "pair-no-boundary").length, 0);
+});
+
+test("search tools across different domains still need a boundary", () => {
+  const tool = (name) => ({
+    name,
+    description: "Search documentation pages by keyword.",
+    parameters: { type: "object", properties: { query: { type: "string", description: "query" } } }
+  });
+  const report = lintSuite({ tools: [tool("search_docs"), tool("search_wiki")] });
+  assert.equal(report.findings.filter((item) => item.code === "pair-family-sibling").length, 0);
+  assert.equal(report.findings.filter((item) => item.code === "pair-no-boundary").length, 1);
 });
 
 test("lint checks every occurrence of an optional parameter name", () => {

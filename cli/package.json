@@ -1,6 +1,6 @@
 {
   "name": "modelfunction-cli",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "type": "module",
   "license": "MIT",
   "description": "Function-calling quality gate for AI agents: scan MCP tools/skills, lint description boundaries, and score model tool selection. Local-first, MCP-ready.",

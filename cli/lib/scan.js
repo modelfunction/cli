@@ -652,9 +652,13 @@ export function scanPythonTools(text) {
       properties[param.name] = param.schema;
       if (param.required) required.push(param.name);
     }
+    const doc = pythonDocstringInfo(lines, signature.endLine);
+    for (const [name, schema] of Object.entries(properties)) {
+      if (!schema.description && doc.args[name]) schema.description = doc.args[name];
+    }
     tools.push({
       name: defMatch[1],
-      description: pythonDocstring(lines, signature.endLine),
+      description: doc.summary || pythonDocstring(lines, signature.endLine),
       parameters: {
         type: "object",
         properties,
@@ -684,12 +688,17 @@ export function scanPythonClassTools(text) {
     const joined = lines.slice(i + 1, end).join("\n");
     const nameMatch = joined.match(/^\s*name\s*=\s*["']([^"']+)["']/m);
     if (!nameMatch) continue;
+    const properties = pythonInputs(joined);
+    const doc = pythonDocstringInfo(lines, i);
+    for (const [name, schema] of Object.entries(properties)) {
+      if (!schema.description && doc.args[name]) schema.description = doc.args[name];
+    }
     tools.push({
       name: nameMatch[1],
-      description: pythonAttrString(joined, "description") || pythonDocstring(lines, i),
+      description: pythonAttrString(joined, "description") || doc.summary || pythonDocstring(lines, i),
       parameters: {
         type: "object",
-        properties: pythonInputs(joined)
+        properties
       }
     });
     i = end;
@@ -724,9 +733,13 @@ export function scanPythonActionDecorators(text) {
         properties[param.name] = param.schema;
       }
     }
+    const doc = pythonDocstringInfo(lines, j);
+    for (const [name, schema] of Object.entries(properties)) {
+      if (!schema.description && doc.args[name]) schema.description = doc.args[name];
+    }
     tools.push({
       name: def[1],
-      description: description || pythonDocstring(lines, j),
+      description: description || doc.summary || pythonDocstring(lines, j),
       parameters: { type: "object", properties }
     });
     i = args?.endLine ?? signature.endLine;
@@ -924,6 +937,69 @@ function pythonDocstring(lines, fromLine) {
     }
   }
   return "";
+}
+
+function pythonDocstringInfo(lines, fromLine) {
+  for (let i = fromLine + 1; i < Math.min(lines.length, fromLine + 8); i += 1) {
+    const match = lines[i].match(/^\s*(?:[rRuU])?("""|''')\s*(.*)$/);
+    if (!match) continue;
+    const quote = match[1];
+    const rest = match[2];
+    const body = [];
+    const sameLineEnd = rest.indexOf(quote);
+    if (sameLineEnd !== -1) {
+      body.push(rest.slice(0, sameLineEnd));
+      return parsePythonDocstring(body);
+    }
+    if (rest.trim()) body.push(rest);
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const line = lines[j];
+      const end = line.indexOf(quote);
+      if (end !== -1) {
+        body.push(line.slice(0, end));
+        break;
+      }
+      body.push(line);
+    }
+    return parsePythonDocstring(body);
+  }
+  return { summary: "", args: {} };
+}
+
+function parsePythonDocstring(body) {
+  const summary = body.map((line) => line.trim()).find(Boolean) ?? "";
+  const args = {};
+  let inArgs = false;
+  let argsIndent = 0;
+  let current = null;
+  for (const raw of body) {
+    const line = raw.replace(/\s+$/, "");
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const indent = line.match(/^\s*/)[0].length;
+    if (/^(Args|Arguments|Parameters)\s*:\s*$/i.test(trimmed)) {
+      inArgs = true;
+      argsIndent = indent;
+      current = null;
+      continue;
+    }
+    if (!inArgs) continue;
+    if (indent <= argsIndent && /:\s*$/.test(trimmed)) {
+      inArgs = false;
+      current = null;
+      continue;
+    }
+    const param = trimmed.match(/^([A-Za-z_]\w*)\s*(?:\([^)]*\))?\s*:\s*(.+)$/);
+    if (param) {
+      current = param[1];
+      args[current] = param[2].trim();
+      continue;
+    }
+    if (current && indent > argsIndent) {
+      args[current] = `${args[current]} ${trimmed}`.trim();
+    }
+  }
+  return { summary, args };
 }
 
 function scanCode(text) {
