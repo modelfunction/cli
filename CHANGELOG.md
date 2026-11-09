@@ -3,6 +3,23 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.7.0 — 2026-11-09
+
+- `mf compare` reports persistent interference: the same expected → actual
+  mis-selection pair recurring at least 3 times across at least 2 cases in the
+  two compared reports. Each entry separates stable mis-selection from
+  high-entropy drift (`--repeat`).
+- `mf scan` no longer reports template-string or unresolved-constant
+  descriptions as missing; they are marked `descriptionSource: "runtime"`.
+- New `pair-family-sibling` info rule: same-family tools with distinct actions
+  (`filesystem-copy-file` × `filesystem-move-file`) are no longer boundary
+  warnings. Families that share an action verb (`search_docs` × `search_wiki`)
+  still warn.
+- anything-llm plugin scan: pair warnings 146 → 37 (remaining are cross-vendor
+  gmail × outlook pairs).
+- Python scans read Google-style docstring `Args:` sections and fill parameter
+  descriptions when the type annotations do not carry them.
+
 ## 0.6.2 — 2026-11-08
 
 - `param-optional-imperative` no longer treats noun phrases ("Include tool

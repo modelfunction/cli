@@ -290,3 +290,173 @@ test("compare ignores profiles when neither report has one", () => {
   );
   assert.equal(report.profiles, null);
 });
+
+function packScorecard({ flipped = [], excluded = [], unreviewed = [] } = {}) {
+  const ids = ["t01", "t02", "m03"];
+  const rows = ids.map((id) => {
+    const isFlipped = flipped.includes(id);
+    return {
+      id,
+      expectedTool: "message",
+      actualTool: isFlipped ? "read_goal_status" : "message",
+      selectionCorrect: !isFlipped,
+      args: isFlipped
+        ? { total: 1, matched: 0, failures: ["text"] }
+        : { total: 1, matched: 1, failures: [] },
+      passed: !isFlipped,
+      reviewed: !unreviewed.includes(id),
+      source: "manual",
+      ...(excluded.includes(id) ? { excludeFromBase: true } : {})
+    };
+  });
+  return {
+    suite: {
+      fingerprint: {
+        hash: "synthetic-efb-test",
+        tools: [],
+        cases: ids.map((id) => ({ id, hash: id === "t01" ? "h-stable" : "h-family" }))
+      }
+    },
+    models: [{ model: "m-base", rows }]
+  };
+}
+
+async function compareExit(before, after, failOnRegression = false) {
+  const dir = await mkdtemp(join(tmpdir(), "mf-compare-accept-"));
+  try {
+    const beforePath = join(dir, "before.json");
+    const afterPath = join(dir, "after.json");
+    await writeFile(beforePath, JSON.stringify(before), "utf8");
+    await writeFile(afterPath, JSON.stringify(after), "utf8");
+    return await runCompare(
+      { paths: [beforePath, afterPath], json: true, failOnRegression },
+      { log: () => {}, error: () => {} }
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+test("acceptance A: excludeFromBase flips stay out of metrics and regressions", () => {
+  const report = compareScorecards(
+    packScorecard(),
+    packScorecard({ flipped: ["t02", "m03"], excluded: ["t02", "m03"] })
+  );
+  const model = report.models[0];
+  assert.equal(model.reviewed, 1);
+  assert.equal(model.excluded, 2);
+  assert.equal(model.metrics.selection.before, 1);
+  assert.equal(model.metrics.selection.after, 1);
+  assert.equal(model.regressions.length, 0);
+  assert.match(formatCompare(report), /排除出回归判定: 2 条/);
+  assert.match(formatCompare(report), /选择准确率: 100% → 100%/);
+});
+
+test("acceptance B: reviewed:false rows behave exactly like before the fix", () => {
+  const report = compareScorecards(
+    packScorecard(),
+    packScorecard({ flipped: ["t02", "m03"], unreviewed: ["t02", "m03"] })
+  );
+  const model = report.models[0];
+  assert.equal(model.reviewed, 1);
+  assert.equal(model.excluded, 0);
+  assert.equal(model.regressions.length, 0);
+});
+
+test("acceptance C: a real regression is listed and default compare exit stays 0", async () => {
+  const before = packScorecard();
+  const after = packScorecard({ flipped: ["t02", "m03"], excluded: ["m03"] });
+  const model = compareScorecards(before, after).models[0];
+  assert.equal(model.regressions.length, 1);
+  assert.equal(model.regressions[0].id, "t02");
+  assert.equal(await compareExit(before, after, false), 0);
+  assert.equal(await compareExit(before, after, true), 2);
+  const gate = regressionGate(compareScorecards(before, after), []);
+  assert.equal(gate.status, "ok");
+  assert.deepEqual(gate.regressions, ["m-base/t02"]);
+});
+
+test("acceptance C2/A2: --fail-on-regression penalizes real regressions only", async () => {
+  const before = packScorecard();
+  const excludedFlips = packScorecard({ flipped: ["t02", "m03"], excluded: ["t02", "m03"] });
+  assert.equal(await compareExit(before, excludedFlips, true), 0);
+  assert.equal(await compareExit(before, packScorecard({ flipped: ["t02"] }), true), 2);
+});
+
+function persistentScorecard({ flipped = [], unstable = [] } = {}) {
+  const ids = ["z05", "z12", "f03", "f01"];
+  const rows = ids.map((id) => ({
+    id,
+    expectedTool: "create_html_report",
+    actualTool: flipped.includes(id) ? "file_read" : "create_html_report",
+    selectionCorrect: !flipped.includes(id),
+    args: { total: 0, matched: 0, failures: [] },
+    passed: !flipped.includes(id),
+    reviewed: true,
+    source: "manual"
+  }));
+  return {
+    suite: {
+      fingerprint: {
+        hash: "synthetic-persistent-test",
+        tools: [
+          { name: "create_html_report", hash: "h-report" },
+          { name: "file_read", hash: "h-read" }
+        ],
+        cases: ids.map((id) => ({ id, hash: `h-${id}` }))
+      },
+      execution: { hash: "exec-1" }
+    },
+    models: [
+      {
+        model: "m-base",
+        rows,
+        ...(unstable.length > 0
+          ? { stability: { runs: 3, unstable: unstable.map((id) => ({ id, outcomes: [] })) } }
+          : {})
+      }
+    ]
+  };
+}
+
+test("compare aggregates persistent interference across cases and reports", () => {
+  const before = persistentScorecard({ flipped: ["z05", "z12", "f01"] });
+  const after = persistentScorecard({ flipped: ["z05", "z12", "f03", "f01"] });
+  const report = compareScorecards(before, after);
+  const model = report.models[0];
+  assert.equal(model.persistentInterference.length, 1);
+  const pair = model.persistentInterference[0];
+  assert.equal(pair.expected, "create_html_report");
+  assert.equal(pair.stolenBy, "file_read");
+  assert.equal(pair.occurrences, 7);
+  assert.equal(pair.runs, 2);
+  assert.deepEqual(pair.cases.sort(), ["f01", "f03", "z05", "z12"]);
+  assert.equal(pair.stable, 4);
+  assert.equal(pair.drifting, 0);
+  assert.match(formatCompare(report), /持续干扰/);
+});
+
+test("compare separates stable misselection from high-entropy drift", () => {
+  const before = persistentScorecard({ flipped: ["z05", "z12", "f01"] });
+  const after = persistentScorecard({
+    flipped: ["z05", "z12", "f03", "f01"],
+    unstable: ["f03"]
+  });
+  const pair = compareScorecards(before, after).models[0].persistentInterference[0];
+  assert.equal(pair.stable, 3);
+  assert.equal(pair.drifting, 1);
+});
+
+test("compare does not flag sparse interference as persistent", () => {
+  const onlyOne = compareScorecards(
+    persistentScorecard({ flipped: ["z05"] }),
+    persistentScorecard({ flipped: ["z05"] })
+  );
+  assert.equal(onlyOne.models[0].persistentInterference.length, 0);
+
+  const twoRunsTwoCases = compareScorecards(
+    persistentScorecard({ flipped: ["z05"] }),
+    persistentScorecard({ flipped: ["z12"] })
+  );
+  assert.equal(twoRunsTwoCases.models[0].persistentInterference.length, 0);
+});

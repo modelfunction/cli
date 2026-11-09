@@ -359,6 +359,38 @@ test("scan extracts class-based Tool subclasses", async () => {
   }
 });
 
+test("scan reads Google-style docstring Args", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-args-"));
+  try {
+    await writeFile(
+      join(root, "search.py"),
+      [
+        "@tool",
+        "def search_docs(query: str, limit: int = 10) -> str:",
+        '    """Search the documentation.',
+        "",
+        "    Args:",
+        "        query: Search terms.",
+        "        limit: Maximum number of results.",
+        "",
+        "    Returns:",
+        "        Matching documents.",
+        '    """',
+        '    return ""'
+      ].join("\n"),
+      "utf8"
+    );
+    const report = await scanProject(root);
+    const tool = report.tools.find((item) => item.name === "search_docs");
+    assert.ok(tool);
+    assert.equal(tool.description, "Search the documentation.");
+    assert.equal(tool.parameters.properties.query.description, "Search terms.");
+    assert.equal(tool.parameters.properties.limit.description, "Maximum number of results.");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("scan extracts registry.action decorators", async () => {
   const root = await mkdtemp(join(tmpdir(), "mf-action-tools-"));
   try {

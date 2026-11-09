@@ -4,7 +4,7 @@ rem Point the scheduled task at this file after setting MODEL_API_KEY in the
 rem task environment (or in a wrapper script that is not committed).
 setlocal
 
-if "%MF_VERSION%"=="" set MF_VERSION=0.6.2
+if "%MF_VERSION%"=="" set MF_VERSION=0.7.0
 if "%MF_SUITE%"=="" set MF_SUITE=mf.suite.json
 if "%MF_MODELS%"=="" set MF_MODELS=mf.models.json
 if "%MF_NIGHTLY_DIR%"=="" set MF_NIGHTLY_DIR=.mf\nightly

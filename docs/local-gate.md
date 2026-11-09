@@ -70,7 +70,7 @@ templates\local\nightly.cmd
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MF_VERSION` | `0.6.2` | 固定版本，避免 npx 漂移 |
+| `MF_VERSION` | `0.7.0` | 固定版本，避免 npx 漂移 |
 | `MF_SUITE` | `mf.suite.json` | 套件 |
 | `MF_MODELS` | `mf.models.json` | 模型注册表 |
 | `MF_BASELINE` | `.mf/baseline.json` | 存在时自动加 `--baseline --fail-on-regression` |

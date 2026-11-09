@@ -8,7 +8,7 @@
 # write reports under MF_STATIC_DIR (default .mf/static).
 set -u
 
-VERSION="${MF_VERSION:-0.6.2}"
+VERSION="${MF_VERSION:-0.7.0}"
 SUITE="${MF_SUITE:-mf.suite.json}"
 OUT_DIR="${MF_STATIC_DIR:-.mf/static}"
 

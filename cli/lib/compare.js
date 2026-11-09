@@ -1,3 +1,6 @@
+const PERSISTENT_MIN_OCCURRENCES = 3;
+const PERSISTENT_MIN_CASES = 2;
+
 export function compareScorecards(before, after) {
   const fingerprintBefore = before.suite?.fingerprint ?? null;
   const fingerprintAfter = after.suite?.fingerprint ?? null;
@@ -27,11 +30,15 @@ export function compareScorecards(before, after) {
     const rowsAfter = new Map((modelAfter.rows ?? []).map((row) => [row.id, row]));
     const comparableIds = commonCaseIds.filter((id) => rowsBefore.has(id) && rowsAfter.has(id));
 
+    const unstableBefore = new Set((modelBefore.stability?.unstable ?? []).map((item) => item.id));
+    const unstableAfter = new Set((modelAfter.stability?.unstable ?? []).map((item) => item.id));
+
     const regressions = [];
     const fixes = [];
     const argsDrops = [];
     const confusionCounts = new Map();
     const interferenceMap = new Map();
+    const persistentMap = new Map();
     let reviewed = 0;
     let excluded = 0;
     let selectionBefore = 0;
@@ -55,6 +62,8 @@ export function compareScorecards(before, after) {
 
       const confusionKey = `${rowAfter.expectedTool ?? "(none)"}→${rowAfter.actualTool ?? "(none)"}`;
       confusionCounts.set(confusionKey, (confusionCounts.get(confusionKey) ?? 0) + 1);
+      recordPersistent(persistentMap, rowBefore, "before", id, unstableBefore);
+      recordPersistent(persistentMap, rowAfter, "after", id, unstableAfter);
 
       if (
         rowBefore.selectionCorrect &&
@@ -108,6 +117,23 @@ export function compareScorecards(before, after) {
         (change) => change.change === "added" && change.name === entry.stolenBy
       )
     }));
+    const persistentInterference = [...persistentMap.values()]
+      .filter(
+        (entry) =>
+          entry.occurrences >= PERSISTENT_MIN_OCCURRENCES && entry.cases.size >= PERSISTENT_MIN_CASES
+      )
+      .map((entry) => ({
+        expected: entry.expected,
+        stolenBy: entry.stolenBy,
+        occurrences: entry.occurrences,
+        runs: entry.sides.size,
+        cases: [...entry.cases.keys()],
+        stable: [...entry.cases.values()].filter((drifting) => !drifting).length,
+        drifting: [...entry.cases.values()].filter(Boolean).length
+      }))
+      .sort(
+        (a, b) => b.occurrences - a.occurrences || a.expected.localeCompare(b.expected)
+      );
 
     models.push({
       model: modelBefore.model,
@@ -123,7 +149,8 @@ export function compareScorecards(before, after) {
       fixes,
       argsDrops,
       confusion,
-      interference
+      interference,
+      persistentInterference
     });
   }
 
@@ -264,6 +291,14 @@ export function formatCompare(report) {
         lines.push(`    - ${item.expected} → ${item.stolenBy}: ${item.count} 条${tag}  ${item.cases.join(", ")}`);
       }
     }
+    if (model.persistentInterference?.length > 0) {
+      lines.push("  持续干扰（同一对工具 ≥3 次且 ≥2 条用例，跨比较的两份报告）:");
+      for (const item of model.persistentInterference) {
+        lines.push(
+          `    - ${item.expected} → ${item.stolenBy}: ${item.occurrences} 次 / ${item.cases.length} 条用例（稳定错选 ${item.stable}，高熵漂移 ${item.drifting}）  ${item.cases.join(", ")}`
+        );
+      }
+    }
     const offDiagonal = (model.confusion ?? []).filter((entry) => entry.expected !== entry.actual);
     if (offDiagonal.length > 0) {
       lines.push("  误选分布:");
@@ -342,6 +377,22 @@ function diffEntries(beforeList, afterList, key) {
     if (!before.has(name)) changes.push({ name, change: "added", after: hash });
   }
   return changes;
+}
+
+function recordPersistent(map, row, side, id, unstableIds) {
+  if (!row?.expectedTool || !row.actualTool || row.expectedTool === row.actualTool) return;
+  const key = `${row.expectedTool}→${row.actualTool}`;
+  const entry = map.get(key) ?? {
+    expected: row.expectedTool,
+    stolenBy: row.actualTool,
+    occurrences: 0,
+    cases: new Map(),
+    sides: new Set()
+  };
+  entry.occurrences += 1;
+  entry.cases.set(id, (entry.cases.get(id) ?? false) || unstableIds.has(id));
+  entry.sides.add(side);
+  map.set(key, entry);
 }
 
 function ratio(numerator, denominator) {

@@ -155,6 +155,21 @@ test("extracts plugin function registrations", () => {
   assert.deepEqual(tools[0].parameters.required, ["path"]);
 });
 
+test("marks unresolved template descriptions as runtime-provided", () => {
+  const src = `
+    const PREFIX = "result";
+    const DESCRIPTION = \`Do the thing. Follow-up starts with \${PREFIX}.\`;
+    export const ToolX = buildTool({
+      name: "tool_x",
+      description: DESCRIPTION,
+      inputSchema: z.object({ q: z.string() })
+    });
+  `;
+  const [tool] = extractJsTools(src);
+  assert.equal(tool.name, "tool_x");
+  assert.equal(tool.descriptionSource, "runtime");
+});
+
 test("marks method-generated descriptions as runtime-provided", () => {
   const src = `
     export const ConfigTool = buildTool({

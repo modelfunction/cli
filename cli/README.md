@@ -5,7 +5,7 @@
 ## 安装
 
 ```bash
-npx -y modelfunction-cli@0.6.2 --version
+npx -y modelfunction-cli@0.7.0 --version
 # 或
 npm i -D modelfunction-cli
 npx mf --version
@@ -82,7 +82,7 @@ INTERNAL_LLM_KEY=... mf eval --suite mf.suite.json \
 | `mf audit` | 一次静态审计：lint + 混淆族边界 + 用例覆盖 + 挂载检查，输出可转发的 Markdown/JSON；不调用模型 |
 | `mf lint` | 静态检查工具描述与参数 schema，以及 skills 的 name/description（不调用模型）；0.6.1 起含「可选参数祈使句」与「悬空工具名引用」两条 info 规则；重复规则自动合并成一条；有 `profiles` 时给出「这些组不要合并挂载」 |
 | `mf check` | 安装门禁：一个或一包新能力 × 已装能力（`--manifest` / `--manifests` + `--installed`），纯静态、返回 pass/warn、不阻断；门禁语境只对混淆对/必填来源/结构性错误报 warn，其余降 info；也可 `import { check, checkMany } from "modelfunction-cli"` |
-| `mf compare` | 跨版本比较、干扰归因、混淆矩阵；两份报告都有分组时按组对比；`--fail-on-regression` 发现回归退出 2；`excludeFromBase` 行不参与回归判定 |
+| `mf compare` | 跨版本比较、干扰归因、混淆矩阵；两份报告都有分组时按组对比；`--fail-on-regression` 发现回归退出 2；`excludeFromBase` 行不参与回归判定；同一对工具在 ≥3 次且 ≥2 条用例上重复时给出「持续干扰」聚合（区分稳定错选与高熵漂移） |
 | `mf ablate` | 留一法：去掉某个工具再跑一遍，量化它是否干扰其他工具；`--profile` 限定在某个挂载组内 |
 | `mf cluster` | 聚类工具，建议挂载分组；参数形状拆散的同一族（如 `sessions_*`）列为「同族候选」；并输出「族内边界清单」（每族会互抢的对 + 每个工具可用的区分词）；`--out` 把分组写成套件的 `profiles` |
 | `mf exec` | 单工具执行 + 指标（Node / Python），支持 `--allow-read/write/net`、超时、sideEffects 准入 |
@@ -126,7 +126,7 @@ mf eval --suite mf.suite.json --models internal-ds \
   "mcpServers": {
     "modelfunction": {
       "command": "npx",
-      "args": ["-y", "modelfunction-cli@0.6.2", "mcp"]
+      "args": ["-y", "modelfunction-cli@0.7.0", "mcp"]
     }
   }
 }
@@ -138,7 +138,7 @@ mf eval --suite mf.suite.json --models internal-ds \
 
 对外 JSON 字段、`check()` 返回结构、MCP 参数与退出码见 [SCHEMA.md](SCHEMA.md)，自 0.4.3 起冻结为 v1：v1 内只做加法，重命名或删除字段需 major 并提前两个 minor 或 90 天弃用。`check()` 的类型声明随包发布。
 
-`0.6.2` 待 npm 发布：修复 `param-optional-imperative` 的名词短语/工具动作误报与多出现漏报；`mf compare` 遵守 `excludeFromBase`（对比结果带 `excluded`），新增 `mf compare --fail-on-regression`。`0.6.1` 已发布到 npm（latest）：新增 `param-optional-imperative` 与 `desc-dangling-tool` 两条 info lint，并把「具名否定 / 泛化否定 / 可选参数祈使句 / 改名引用 / 话术范围」写进 `skills/mf-cases/SKILL.md`。`0.6.0` 已发布到 npm（latest）：token 成为主口径（评分卡新增 `totalTokens`），模型注册表支持 `currency`（CNY/USD，默认 CNY），成本字段改为 `totalCost` / `avgCost` + `costCurrency`（`totalCostCny` / `avgCostCny` 仅在 CNY 时保留），新增 `mf eval --max-tokens <n>` 与 MCP `maxTokens`；`--fail-on-regression` 在基线模型缺失或本轮全部调用失败时改为 exit 2（无法判定 ≠ 无回归），自动选模型时在 stderr 打 note；本地门禁模板改用退出码判定、只在成功 eval 后更新 state，`.cmd` 固定 CRLF。`0.5.5` 含 eval `--retry <n>` / `--min-interval <ms>`、评分卡 `retries`、CI 模板 static 层 `cluster --json`、`templates/local/` 与 `docs/local-gate.md`（内网/非 GitHub 环境的 pre-push 静态门禁、变更门、定时回归）。`0.5.4` 含用例级 `excludeFromBase` / `excludeFromProfiles`、评分卡 `errorKind` / `errorsByKind` / `scoredTotal` / `selectionAccuracyExcludingErrors`、挂载对比错误不计 jammed、audit 分组 `neg%` 与分组 token 用量聚合。`0.5.3` 及更早的能力见下：凭证与本地反馈、usage `ci` 标记、eval `--progress`/`--max-cost`、`mf audit`、`scan --probe` streamable HTTP、MCP 静态工具 `lint`/`check`/`cluster`/`compare`、`checkMany` 一包批量检查、门禁严重度收敛、静态规则性能（真实 100 能力清单 `checkMany` 471ms→40ms）、`installed` 形状校验与 `profiles` 平台形态兼容。示例统一使用 `@0.6.2`。
+`0.7.0` 已发布到 npm（latest）：`mf compare` 新增持续干扰聚合（同一「期望 → 误选」对 ≥3 次且 ≥2 条用例，区分稳定错选与高熵漂移）；新增 `pair-family-sibling` 同族规则；`mf scan` 把模板字符串/未解析常量描述标为 `runtime`，并支持 Python Google 风格 docstring `Args:` 参数描述。`0.6.2` 已发布到 npm：修复 `param-optional-imperative` 的名词短语/工具动作误报与多出现漏报；`mf compare` 遵守 `excludeFromBase`（对比结果带 `excluded`），新增 `mf compare --fail-on-regression`。`0.6.1` 已发布到 npm：新增 `param-optional-imperative` 与 `desc-dangling-tool` 两条 info lint，并把「具名否定 / 泛化否定 / 可选参数祈使句 / 改名引用 / 话术范围」写进 `skills/mf-cases/SKILL.md`。`0.6.0` 已发布到 npm（latest）：token 成为主口径（评分卡新增 `totalTokens`），模型注册表支持 `currency`（CNY/USD，默认 CNY），成本字段改为 `totalCost` / `avgCost` + `costCurrency`（`totalCostCny` / `avgCostCny` 仅在 CNY 时保留），新增 `mf eval --max-tokens <n>` 与 MCP `maxTokens`；`--fail-on-regression` 在基线模型缺失或本轮全部调用失败时改为 exit 2（无法判定 ≠ 无回归），自动选模型时在 stderr 打 note；本地门禁模板改用退出码判定、只在成功 eval 后更新 state，`.cmd` 固定 CRLF。`0.5.5` 含 eval `--retry <n>` / `--min-interval <ms>`、评分卡 `retries`、CI 模板 static 层 `cluster --json`、`templates/local/` 与 `docs/local-gate.md`（内网/非 GitHub 环境的 pre-push 静态门禁、变更门、定时回归）。`0.5.4` 含用例级 `excludeFromBase` / `excludeFromProfiles`、评分卡 `errorKind` / `errorsByKind` / `scoredTotal` / `selectionAccuracyExcludingErrors`、挂载对比错误不计 jammed、audit 分组 `neg%` 与分组 token 用量聚合。`0.5.3` 及更早的能力见下：凭证与本地反馈、usage `ci` 标记、eval `--progress`/`--max-cost`、`mf audit`、`scan --probe` streamable HTTP、MCP 静态工具 `lint`/`check`/`cluster`/`compare`、`checkMany` 一包批量检查、门禁严重度收敛、静态规则性能（真实 100 能力清单 `checkMany` 471ms→40ms）、`installed` 形状校验与 `profiles` 平台形态兼容。示例统一使用 `@0.7.0`。
 
 ## 数据边界
 
@@ -167,7 +167,7 @@ mf feedback --out out.json  # 导出脱敏反馈包（聚合值，不含原始�
 
 ```bash
 # 1. 把 mf 挂成 MCP server
-claude mcp add modelfunction -- npx -y modelfunction-cli@0.6.2 mcp
+claude mcp add modelfunction -- npx -y modelfunction-cli@0.7.0 mcp
 ```
 
 ```text

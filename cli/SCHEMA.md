@@ -117,6 +117,7 @@ skills 只做静态检查，不参与模型评测。
 - `--profile` 时每个组含 `profile`、`mounted`、`allInOne`、`delta`、`lifted`、`jammed`、`errors`，以及 `usage`（`inputTokens` / `cachedTokens` / `outputTokens` / `totalTokens` / `cost` / `costCurrency`；CNY 时另带 `costCny`）；错误行不参与挂载对比（不会被记成 jammed），每个组的 `reviewed` 是可评分行数。
 - `fingerprint` 由工具与用例内容计算；`mf compare` 用它判断两份报告是否可比。
 - `mf compare` 与 `--fail-on-regression` 会跳过任一报告中标了 `excludeFromBase` 的行；对比结果里的 `excluded` 给出跳过的行数。这些行既不参与回归判定，也不进入对比指标。
+- `mf compare` 的每个模型结果带 `persistentInterference[]`：把两份报告中「期望工具 → 实际误选工具」相同的行按对聚合；`occurrences ≥ 3` 且覆盖 `cases ≥ 2` 时列入，字段为 `expected` / `stolenBy` / `occurrences` / `runs`（出现在几份报告）/ `cases` / `stable`（稳定错选用例数）/ `drifting`（`--repeat` 下高熵漂移用例数）。
 
 ## 3. 扫描输出（`mf scan`）
 
@@ -147,6 +148,7 @@ report：`root`、`tools[]`（`name` / `description` / `parameters` / `origin` /
 - 0.6.1 新增两条 advisory（均为 `info`，不影响 `check()` 的 pass/warn）：
   - `param-optional-imperative`：可选参数的描述用了祈使句；用户输入没提供该参数时可能抑制调用。0.6.2 起扫描参数名的所有出现位置，英文只认显式“参数/parameter”搭配，名词短语（`Include tool messages`）与工具自身动作（`Send message ... by sessionKey`）不再误报。
   - `desc-dangling-tool`：描述引用了套件中不存在的工具名；`similarTo` 给出共享领域词的现有工具，通常来自改名后遗留的引用。
+- 新增 `pair-family-sibling`（info）：同族工具共享领域前缀、动作不同（`filesystem-copy-file` × `filesystem-move-file`）时不再报 `pair-no-boundary`；共享动作词的不同域工具（`search_docs` × `search_wiki`）仍然告警。
 
 ## 5. cluster JSON（`mf cluster --json`）
 
