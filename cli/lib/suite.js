@@ -76,6 +76,8 @@ function normalizeSkill(entry, index) {
   throw new Error(`skill #${index + 1}: must be a name or {name, description}`);
 }
 
+const BUCKETS = new Set(["singleIntent", "multiStep", "ambiguous"]);
+
 function normalizeCase(entry, index, toolNames) {
   const id = entry.id ?? `case_${index + 1}`;
   if (typeof entry.input !== "string" || entry.input.trim() === "") {
@@ -84,6 +86,28 @@ function normalizeCase(entry, index, toolNames) {
   const expectedTool = entry.expectedTool ?? null;
   if (expectedTool !== null && !toolNames.has(expectedTool)) {
     throw new Error(`case ${id}: expectedTool "${expectedTool}" is not in the tool list`);
+  }
+  const bucket = entry.bucket === undefined ? "singleIntent" : entry.bucket;
+  if (typeof bucket !== "string" || !BUCKETS.has(bucket)) {
+    throw new Error(`case ${id}: "bucket" must be one of singleIntent, multiStep, ambiguous`);
+  }
+  if (bucket !== "singleIntent" && expectedTool === null) {
+    throw new Error(`case ${id}: bucket "${bucket}" requires an expectedTool (negative cases are singleIntent)`);
+  }
+  let acceptableFirstCalls = null;
+  if (entry.acceptableFirstCalls !== undefined) {
+    if (!Array.isArray(entry.acceptableFirstCalls) || entry.acceptableFirstCalls.length === 0) {
+      throw new Error(`case ${id}: "acceptableFirstCalls" must be a non-empty array of tool names`);
+    }
+    for (const name of entry.acceptableFirstCalls) {
+      if (typeof name !== "string" || !toolNames.has(name)) {
+        throw new Error(`case ${id}: acceptableFirstCalls entry ${JSON.stringify(name)} is not in the tool list`);
+      }
+    }
+    if (!entry.acceptableFirstCalls.includes(expectedTool)) {
+      throw new Error(`case ${id}: "acceptableFirstCalls" must include expectedTool "${expectedTool}"`);
+    }
+    acceptableFirstCalls = [...new Set(entry.acceptableFirstCalls)];
   }
   if (expectedTool === null && entry.expectedArgs && Object.keys(entry.expectedArgs).length > 0) {
     throw new Error(`case ${id}: expectedArgs requires an expectedTool`);
@@ -105,6 +129,9 @@ function normalizeCase(entry, index, toolNames) {
     input: entry.input,
     expectedTool,
     expectedArgs: entry.expectedArgs ?? {},
+    bucket,
+    ...(acceptableFirstCalls ? { acceptableFirstCalls } : {}),
+    bucketReason: typeof entry.bucketReason === "string" ? entry.bucketReason : "",
     note: entry.note ?? "",
     source: typeof entry.source === "string" && entry.source ? entry.source : "manual",
     reviewed: entry.reviewed === undefined ? true : Boolean(entry.reviewed),

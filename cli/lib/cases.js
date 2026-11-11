@@ -65,6 +65,32 @@ export async function addCases(suitePath, incoming, { source = "agent", reviewed
       rejected.push({ id, reason: "expectedArgs requires expectedTool (omit both for negative cases)" });
       continue;
     }
+    const bucket = entry.bucket ?? "singleIntent";
+    if (!["singleIntent", "multiStep", "ambiguous"].includes(bucket)) {
+      rejected.push({ id, reason: "bucket must be one of singleIntent, multiStep, ambiguous" });
+      continue;
+    }
+    if (bucket !== "singleIntent" && expectedTool === null) {
+      rejected.push({ id, reason: `bucket "${bucket}" requires an expectedTool` });
+      continue;
+    }
+    let acceptableFirstCalls = null;
+    if (entry.acceptableFirstCalls !== undefined) {
+      if (!Array.isArray(entry.acceptableFirstCalls) || entry.acceptableFirstCalls.length === 0) {
+        rejected.push({ id, reason: "acceptableFirstCalls must be a non-empty array" });
+        continue;
+      }
+      const unknown = entry.acceptableFirstCalls.filter((name) => !tools.has(name));
+      if (unknown.length > 0) {
+        rejected.push({ id, reason: `unknown acceptableFirstCalls: ${unknown.join(", ")}` });
+        continue;
+      }
+      if (!entry.acceptableFirstCalls.includes(expectedTool)) {
+        rejected.push({ id, reason: `acceptableFirstCalls must include expectedTool "${expectedTool}"` });
+        continue;
+      }
+      acceptableFirstCalls = [...new Set(entry.acceptableFirstCalls.map(String))];
+    }
     if (expectedTool !== null) {
       const properties = tools.get(expectedTool).parameters?.properties ?? {};
       for (const key of Object.keys(expectedArgs)) {
@@ -79,6 +105,11 @@ export async function addCases(suitePath, incoming, { source = "agent", reviewed
       input: entry.input,
       expectedTool,
       expectedArgs,
+      bucket,
+      ...(acceptableFirstCalls ? { acceptableFirstCalls } : {}),
+      ...(typeof entry.bucketReason === "string" && entry.bucketReason
+        ? { bucketReason: entry.bucketReason }
+        : {}),
       ...(entry.note ? { note: String(entry.note) } : {}),
       source: typeof entry.source === "string" && entry.source ? entry.source : source,
       reviewed: entry.reviewed === undefined ? reviewed : Boolean(entry.reviewed),

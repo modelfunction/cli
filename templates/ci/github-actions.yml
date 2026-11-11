@@ -46,7 +46,9 @@ jobs:
     needs: static
     runs-on: ubuntu-latest
     env:
-      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      # Neutral placeholder: any selected model falls back to this key when its
+      # provider-specific variable is unset. Swap in your own secret name.
+      MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

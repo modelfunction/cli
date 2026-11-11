@@ -462,6 +462,85 @@ test("search tools across different domains still need a boundary", () => {
   assert.equal(report.findings.filter((item) => item.code === "pair-no-boundary").length, 1);
 });
 
+test("lint flags a one-shot claim whose param accepts content or paths", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_html_report",
+        description: "Call this tool directly to generate an HTML report for the user.",
+        parameters: {
+          type: "object",
+          properties: {
+            files: { type: "string", description: "file contents or file paths" }
+          }
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "desc-or-contradiction");
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].severity, "warn");
+  assert.equal(findings[0].param, "files");
+});
+
+test("lint detects a Chinese content-or-path contradiction", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_html_report",
+        description: "当用户需要生成 HTML 报告时直接调用本工具。",
+        parameters: {
+          type: "object",
+          properties: {
+            files: { type: "string", description: "文件内容或文件路径" }
+          }
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "desc-or-contradiction");
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].param, "files");
+});
+
+test("lint does not flag alternatives between the same input mode", () => {
+  const suite = {
+    tools: [
+      {
+        name: "fetch_resource",
+        description: "Call this tool directly to fetch a resource.",
+        parameters: {
+          type: "object",
+          properties: {
+            target: { type: "string", description: "file path or URL" }
+          }
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "desc-or-contradiction");
+  assert.equal(findings.length, 0);
+});
+
+test("lint does not flag content/path alternatives without a one-shot claim", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_html_report",
+        description: "Generate an HTML report from the files the user provides.",
+        parameters: {
+          type: "object",
+          properties: {
+            files: { type: "string", description: "file contents or file paths" }
+          }
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "desc-or-contradiction");
+  assert.equal(findings.length, 0);
+});
+
 test("lint checks every occurrence of an optional parameter name", () => {
   const suite = {
     tools: [

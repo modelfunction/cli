@@ -14,16 +14,40 @@ function isEstimated(summary) {
   return summary.rows.some((row) => row.usage?.estimated);
 }
 
+export function formatBucketLine(summary) {
+  const parts = [];
+  const single = summary.buckets?.singleIntent;
+  if (single?.reviewed > 0) {
+    parts.push(`singleIntent ${single.selectionHits}/${single.reviewed} (${pct(single.selectionAccuracy)})`);
+  }
+  for (const bucket of ["multiStep", "ambiguous"]) {
+    const entry = summary.buckets?.[bucket];
+    if (entry?.reviewed > 0) {
+      parts.push(`${bucket} 首轮合法 ${entry.legalFirstSteps}/${entry.reviewed}`);
+    }
+  }
+  if (summary.firstCallMisses > 0) {
+    const misses = summary.rows
+      .filter((row) => row.bucket !== "singleIntent" && row.reviewed !== false && !row.legalFirstStep)
+      .map((row) => row.id);
+    parts.push(`首轮未命中 ${summary.firstCallMisses}（${misses.join(", ")}）`);
+  }
+  return `buckets: ${parts.join(" · ")}`;
+}
+
 export function formatCaseLines(summary, cases) {
   const lines = [];
   const byId = new Map(cases.map((testCase) => [testCase.id, testCase]));
   for (const row of summary.rows) {
     const testCase = byId.get(row.id);
     const expected = row.expectedTool ?? "(no tool)";
-    if (row.error) {
+    if (row.bucket && row.bucket !== "singleIntent" && row.legalFirstStep && !row.selectionCorrect) {
+      lines.push(`OK   ${row.id}  ${row.actualTool ?? "(no tool)"}  (${row.bucket} 合法首步)`);
+    } else if (row.error) {
       lines.push(`FAIL ${row.id}  error: ${row.error}`);
     } else if (!row.selectionCorrect) {
-      lines.push(`FAIL ${row.id}  expected ${expected}, got ${row.actualTool ?? "(no tool)"}`);
+      const miss = row.bucket && row.bucket !== "singleIntent" ? "（不在合法首步集）" : "";
+      lines.push(`FAIL ${row.id}  expected ${expected}, got ${row.actualTool ?? "(no tool)"}${miss}`);
     } else if (row.args.failures.length > 0) {
       lines.push(`FAIL ${row.id}  ${row.actualTool}  args mismatch: ${row.args.failures.join(", ")}`);
     } else {
@@ -103,18 +127,29 @@ export function formatMarkdown(suite, cases, summaries) {
     lines.push(
       "",
       `## ${summary.model}（reviewed ${summary.reviewedTotal}/${summary.total}）`,
-      "",
-      "| case | expected | got | args | result |",
-      "| --- | --- | --- | --- | --- |"
+      ""
+    );
+    if (summary.hasBucketVariety) lines.push(formatBucketLine(summary), "");
+    const bucketColumn = summary.hasBucketVariety;
+    lines.push(
+      bucketColumn ? "| case | bucket | expected | got | args | result |" : "| case | expected | got | args | result |",
+      bucketColumn ? "| --- | --- | --- | --- | --- | --- |" : "| --- | --- | --- | --- | --- |"
     );
     for (const row of summary.rows) {
-      const result = row.error ? `error: ${row.error}` : row.passed ? "pass" : "fail";
+      const result = row.error
+        ? `error: ${row.error}`
+        : row.bucket && row.bucket !== "singleIntent" && row.legalFirstStep && !row.selectionCorrect
+          ? "legal first step"
+          : row.passed
+            ? "pass"
+            : "fail";
       const args = row.args.total
         ? `${row.args.matched}/${row.args.total}${row.args.failures.length ? ` (miss: ${row.args.failures.join(", ")})` : ""}`
         : "-";
-      lines.push(
-        `| ${row.id} | ${row.expectedTool ?? "(none)"} | ${row.actualTool ?? "(none)"} | ${args} | ${result} |`
-      );
+      const cells = [row.id];
+      if (bucketColumn) cells.push(row.bucket ?? "singleIntent");
+      cells.push(row.expectedTool ?? "(none)", row.actualTool ?? "(none)", args, result);
+      lines.push(`| ${cells.join(" | ")} |`);
     }
   }
 

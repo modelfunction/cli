@@ -89,6 +89,26 @@ test("check treats runtime-assembled descriptions as advisory, not missing", () 
   assert.equal(result.findings.some((item) => item.code === "desc-missing"), false);
 });
 
+test("check keeps desc-or-contradiction at warn", () => {
+  const result = check({
+    manifest: {
+      name: "create_html_report",
+      description: "Call this tool directly to generate an HTML report.",
+      parameters: {
+        type: "object",
+        properties: {
+          files: { type: "string", description: "file contents or file paths" }
+        }
+      }
+    },
+    installed: []
+  });
+  const finding = result.findings.find((item) => item.code === "desc-or-contradiction");
+  assert.ok(finding);
+  assert.equal(finding.severity, "warn");
+  assert.equal(result.verdict, "warn");
+});
+
 test("check flags a required identifier the model cannot source", () => {
   const result = check({
     manifest: {

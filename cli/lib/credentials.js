@@ -91,6 +91,8 @@ export async function applyModelCredentials(registry) {
       .map((config) => config?.apiKeyEnv)
       .filter((name) => typeof name === "string" && name.length > 0)
   );
+  // Neutral fallback so templates need not name a provider's secret.
+  names.add("MODEL_API_KEY");
   const filled = [];
   for (const name of names) {
     if (!process.env[name] && stored[name]) {

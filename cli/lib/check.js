@@ -158,7 +158,8 @@ const GATE_CRITICAL_CODES = new Set([
   "param-type-missing",
   "required-unsourced",
   "pair-no-boundary",
-  "skill-pair-no-boundary"
+  "skill-pair-no-boundary",
+  "desc-or-contradiction"
 ]);
 
 function shape(finding, name) {
