@@ -86,6 +86,48 @@ test("compare ignores excludeFromBase rows for regression metrics", () => {
   assert.match(formatCompare(report), /excludeFromBase/);
 });
 
+test("compare excludes multiStep legal first steps from persistent interference", () => {
+  const fingerprint = {
+    hash: "same",
+    tools: [{ name: "a", hash: "t1" }],
+    cases: [
+      { id: "c1", hash: "1" },
+      { id: "c2", hash: "2" },
+      { id: "c3", hash: "3" }
+    ]
+  };
+  const legalRow = (id, bucket, legal) => ({
+    id,
+    bucket,
+    expectedTool: "a",
+    actualTool: "b",
+    selectionCorrect: false,
+    legalFirstStep: legal,
+    args: { total: 0, matched: 0, failures: [] },
+    passed: false,
+    reviewed: true,
+    latencyMs: 1,
+    usage: { input: 1, output: 1 },
+    error: null
+  });
+  const rows = [legalRow("c1", "singleIntent", false), legalRow("c2", "multiStep", true), legalRow("c3", "singleIntent", false)];
+  const before = { suite: { fingerprint }, models: [{ model: "m", rows }] };
+  const after = { suite: { fingerprint }, models: [{ model: "m", rows }] };
+
+  const report = compareScorecards(before, after);
+  const model = report.models[0];
+  assert.equal(model.persistentInterference.length, 1);
+  assert.equal(model.persistentInterference[0].bucket, "singleIntent");
+  assert.deepEqual(model.persistentInterference[0].cases, ["c1", "c3"]);
+  assert.equal(model.confusion.length, 1);
+  assert.equal(model.confusion[0].count, 2);
+  assert.equal(model.buckets.multiStep.reviewed, 1);
+  assert.equal(model.buckets.multiStep.legalFirstStep.after, 1);
+  assert.equal(model.buckets.multiStep.firstCallMisses.after, 0);
+  assert.equal(model.buckets.singleIntent.reviewed, 2);
+  assert.match(formatCompare(report), /\[singleIntent\] a → b/);
+});
+
 test("compare --fail-on-regression exits 2 on a comparable regression", async () => {
   const dir = await mkdtemp(join(tmpdir(), "mf-compare-"));
   try {
@@ -383,7 +425,7 @@ test("acceptance C2/A2: --fail-on-regression penalizes real regressions only", a
   assert.equal(await compareExit(before, packScorecard({ flipped: ["t02"] }), true), 2);
 });
 
-function persistentScorecard({ flipped = [], unstable = [] } = {}) {
+function persistentScorecard({ flipped = [], unstable = [], stability = unstable.length > 0 } = {}) {
   const ids = ["z05", "z12", "f03", "f01"];
   const rows = ids.map((id) => ({
     id,
@@ -411,7 +453,7 @@ function persistentScorecard({ flipped = [], unstable = [] } = {}) {
       {
         model: "m-base",
         rows,
-        ...(unstable.length > 0
+        ...(stability
           ? { stability: { runs: 3, unstable: unstable.map((id) => ({ id, outcomes: [] })) } }
           : {})
       }
@@ -433,7 +475,24 @@ test("compare aggregates persistent interference across cases and reports", () =
   assert.deepEqual(pair.cases.sort(), ["f01", "f03", "z05", "z12"]);
   assert.equal(pair.stable, 4);
   assert.equal(pair.drifting, 0);
+  assert.equal(model.stabilityCaptured, false);
   assert.match(formatCompare(report), /持续干扰/);
+  assert.match(formatCompare(report), /未采集 stability 元数据/);
+});
+
+test("compare only claims stability when both reports captured it", () => {
+  const before = persistentScorecard({ flipped: ["z05", "z12", "f01"], unstable: ["z12"] });
+  const after = persistentScorecard({ flipped: ["z05", "z12", "f03", "f01"], unstable: ["f03"] });
+  const full = compareScorecards(before, after);
+  assert.equal(full.models[0].stabilityCaptured, true);
+  assert.doesNotMatch(formatCompare(full), /未采集 stability 元数据/);
+
+  const partial = compareScorecards(
+    persistentScorecard({ flipped: ["z05", "z12", "f01"] }),
+    after
+  );
+  assert.equal(partial.models[0].stabilityCaptured, false);
+  assert.match(formatCompare(partial), /未采集 stability 元数据/);
 });
 
 test("compare separates stable misselection from high-entropy drift", () => {

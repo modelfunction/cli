@@ -66,6 +66,84 @@ test("suite cases accept exclusion flags and reject non-boolean values", async (
   }
 });
 
+test("suite parses bucket tags and guards acceptableFirstCalls", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-buckets-"));
+  try {
+    const suitePath = join(root, "suite.json");
+    const base = {
+      name: "buckets",
+      tools: [
+        { name: "create", description: "Create a report", parameters: { type: "object", properties: {} } },
+        { name: "read", description: "Read a file", parameters: { type: "object", properties: {} } }
+      ],
+      cases: [
+        {
+          id: "m1",
+          input: "make a report from a.md",
+          expectedTool: "create",
+          bucket: "multiStep",
+          acceptableFirstCalls: ["create", "read"],
+          bucketReason: "files may be read first"
+        },
+        { id: "s1", input: "make a report", expectedTool: "create" }
+      ]
+    };
+    await writeFile(suitePath, JSON.stringify(base), "utf8");
+    const suite = await loadSuite(suitePath);
+    assert.equal(suite.cases[0].bucket, "multiStep");
+    assert.deepEqual(suite.cases[0].acceptableFirstCalls, ["create", "read"]);
+    assert.equal(suite.cases[0].bucketReason, "files may be read first");
+    assert.equal(suite.cases[1].bucket, "singleIntent");
+    assert.equal(suite.cases[1].acceptableFirstCalls, undefined);
+
+    base.cases[0].acceptableFirstCalls = ["read"];
+    await writeFile(suitePath, JSON.stringify(base), "utf8");
+    await assert.rejects(() => loadSuite(suitePath), /must include expectedTool/);
+
+    base.cases[0].acceptableFirstCalls = ["create", "missing"];
+    await writeFile(suitePath, JSON.stringify(base), "utf8");
+    await assert.rejects(() => loadSuite(suitePath), /not in the tool list/);
+
+    base.cases[0].bucket = "unsure";
+    await writeFile(suitePath, JSON.stringify(base), "utf8");
+    await assert.rejects(() => loadSuite(suitePath), /bucket.*singleIntent, multiStep, ambiguous/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("eval persists bucket tags into scorecard rows", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-bucket-eval-"));
+  try {
+    const suitePath = join(root, "suite.json");
+    await writeFile(
+      suitePath,
+      JSON.stringify({
+        name: "bucket-eval",
+        tools: [{ name: "read", description: "Read a file", parameters: { type: "object", properties: {} } }],
+        cases: [
+          {
+            id: "m1",
+            input: "read a.md",
+            expectedTool: "read",
+            bucket: "multiStep",
+            acceptableFirstCalls: ["read"]
+          }
+        ]
+      }),
+      "utf8"
+    );
+    const { io, lines } = capture();
+    await runEval(baseOptions({ suite: suitePath }), io);
+    const row = JSON.parse(lines.join("\n")).models[0].rows[0];
+    assert.equal(row.bucket, "multiStep");
+    assert.deepEqual(row.acceptableFirstCalls, ["read"]);
+    assert.equal(row.legalFirstStep, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("mock baseline produces a stable scorecard", async () => {
   const { io } = capture();
   const code = await runEval(baseOptions(), io);

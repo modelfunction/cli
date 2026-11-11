@@ -5,7 +5,7 @@ import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSuite, toModelTools } from "./lib/suite.js";
 import { scoreModel, pickRepresentative, pct, costOf, tokensOf } from "./lib/score.js";
-import { formatTable, formatCaseLines, formatMarkdown } from "./lib/report.js";
+import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine } from "./lib/report.js";
 import { scanProject, buildSuiteDraft, formatScanSummary, addTools, redactReport } from "./lib/scan.js";
 import { probeStdioServer, probeHttpServer } from "./lib/mcp-probe.js";
 import { loadAdapterTools } from "./lib/adapter-import.js";
@@ -249,6 +249,7 @@ export async function runEval(options, io = console) {
         io.log("");
       }
       io.log(formatTable([summary]));
+      if (summary.hasBucketVariety) io.log(formatBucketLine(summary));
       if (summary.stability) {
         const unstable = summary.stability.unstable;
         const list = unstable.slice(0, 8).map((item) => item.id).join(", ");
@@ -330,13 +331,13 @@ export async function runEval(options, io = console) {
 
   const failed = options.failUnder === null
     ? []
-    : summaries.filter((summary) => summary.selectionAccuracy < options.failUnder);
+    : summaries.filter((summary) => headlineSelection(summary) < options.failUnder);
   const profileBelow =
     profileReport && options.failUnder !== null
       ? profileReport.models.flatMap((model) =>
           model.profiles
-            .filter((entry) => entry.reviewed > 0 && entry.mounted.selectionAccuracy < options.failUnder)
-            .map((entry) => `${model.model}/${entry.profile} (${pct(entry.mounted.selectionAccuracy)})`)
+            .filter((entry) => entry.reviewed > 0 && headlineSelection(entry.mounted) < options.failUnder)
+            .map((entry) => `${model.model}/${entry.profile} (${pct(headlineSelection(entry.mounted))})`)
         )
       : [];
 
@@ -347,7 +348,7 @@ export async function runEval(options, io = console) {
     reviewedCount: cases.filter((testCase) => testCase.reviewed !== false).length,
     repeat: options.repeat ?? 1,
     profileGroups: profileReport ? profileReport.groups.length : 0,
-    selectionAccuracy: average(summaries.map((summary) => summary.selectionAccuracy)),
+    selectionAccuracy: average(summaries.map((summary) => headlineSelection(summary))),
     argAccuracy: average(summaries.map((summary) => summary.argAccuracy)),
     passRate: average(summaries.map((summary) => summary.passRate)),
     unstableCases: summaries.reduce((total, summary) => total + (summary.stability?.unstable.length ?? 0), 0),
@@ -363,7 +364,7 @@ export async function runEval(options, io = console) {
   if (failed.length > 0) {
     io.error(
       `below threshold ${pct(options.failUnder)}: ${failed
-        .map((summary) => `${summary.model} (${pct(summary.selectionAccuracy)})`)
+        .map((summary) => `${summary.model} (${pct(headlineSelection(summary))})`)
         .join(", ")}`
     );
     return 2;
@@ -374,6 +375,12 @@ export async function runEval(options, io = console) {
   }
   if (regressions.length > 0) return 2;
   return 0;
+}
+
+// singleIntent is the only externally claimable headline; legacy suites have
+// no other bucket, so this equals selectionAccuracy there.
+function headlineSelection(summary) {
+  return summary.selectionAccuracySingleIntent ?? summary.selectionAccuracy;
 }
 
 function average(values) {
@@ -835,10 +842,11 @@ async function resolveModels(ids, modelsFile, io, network = {}) {
     if (config.type !== "openai") {
       throw new Error(`model "${id}": unsupported type "${config.type}"`);
     }
-    const apiKey = process.env[config.apiKeyEnv];
+    const apiKey = process.env[config.apiKeyEnv] ?? process.env.MODEL_API_KEY;
     if (!apiKey) {
-      if (explicit) throw new Error(`model "${id}": environment variable ${config.apiKeyEnv} is not set`);
-      io.error(`skip ${id}: ${config.apiKeyEnv} is not set`);
+      const names = `${config.apiKeyEnv} (or MODEL_API_KEY)`;
+      if (explicit) throw new Error(`model "${id}": environment variable ${names} is not set`);
+      io.error(`skip ${id}: ${names} is not set`);
       continue;
     }
     registerSecrets([apiKey]);

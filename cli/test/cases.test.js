@@ -56,6 +56,50 @@ async function makeSuite(root, cases = []) {
   return suitePath;
 }
 
+test("addCases carries bucket tags and rejects bad accepts-lists", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-cases-bucket-"));
+  try {
+    const suitePath = await makeSuite(root);
+    const result = await addCases(
+      suitePath,
+      {
+        id: "m1",
+        input: "read a.md then edit it",
+        expectedTool: "a",
+        bucket: "multiStep",
+        acceptableFirstCalls: ["a"],
+        bucketReason: "read is a legal first step"
+      },
+      { reviewed: true }
+    );
+    assert.equal(result.added[0].bucket, "multiStep");
+    assert.deepEqual(result.added[0].acceptableFirstCalls, ["a"]);
+    assert.equal(result.added[0].bucketReason, "read is a legal first step");
+
+    const bad = await addCases(suitePath, {
+      id: "m2",
+      input: "x",
+      expectedTool: "a",
+      bucket: "multiStep",
+      acceptableFirstCalls: ["missing"]
+    });
+    assert.equal(bad.added.length, 0);
+    assert.match(bad.rejected[0].reason, /unknown acceptableFirstCalls/);
+
+    const empty = await addCases(suitePath, {
+      id: "m3",
+      input: "x",
+      expectedTool: "a",
+      bucket: "multiStep",
+      acceptableFirstCalls: []
+    });
+    assert.equal(empty.added.length, 0);
+    assert.match(empty.rejected[0].reason, /non-empty array/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("addCases validates, warns and writes agent cases", async () => {
   const root = await mkdtemp(join(tmpdir(), "mf-cases-"));
   try {

@@ -32,6 +32,10 @@ export function compareScorecards(before, after) {
 
     const unstableBefore = new Set((modelBefore.stability?.unstable ?? []).map((item) => item.id));
     const unstableAfter = new Set((modelAfter.stability?.unstable ?? []).map((item) => item.id));
+    // Both sides need repeat data before stable/drifting means anything; with a
+    // missing side every case falls back to "stable", which is absence of
+    // evidence, not evidence of stability.
+    const stabilityCaptured = Boolean(modelBefore.stability) && Boolean(modelAfter.stability);
 
     const regressions = [];
     const fixes = [];
@@ -39,6 +43,7 @@ export function compareScorecards(before, after) {
     const confusionCounts = new Map();
     const interferenceMap = new Map();
     const persistentMap = new Map();
+    const bucketCounts = new Map();
     let reviewed = 0;
     let excluded = 0;
     let selectionBefore = 0;
@@ -59,20 +64,38 @@ export function compareScorecards(before, after) {
       if (rowAfter.selectionCorrect) selectionAfter += 1;
       if (rowBefore.passed) passBefore += 1;
       if (rowAfter.passed) passAfter += 1;
+      const bucketKey = bucketOf(rowAfter);
+      const counts = bucketCounts.get(bucketKey) ?? {
+        reviewed: 0,
+        selectionBefore: 0,
+        selectionAfter: 0,
+        legalBefore: 0,
+        legalAfter: 0
+      };
+      counts.reviewed += 1;
+      if (rowBefore.selectionCorrect) counts.selectionBefore += 1;
+      if (rowAfter.selectionCorrect) counts.selectionAfter += 1;
+      if (isLegalFirstStep(rowBefore)) counts.legalBefore += 1;
+      if (isLegalFirstStep(rowAfter)) counts.legalAfter += 1;
+      bucketCounts.set(bucketKey, counts);
 
-      const confusionKey = `${rowAfter.expectedTool ?? "(none)"}→${rowAfter.actualTool ?? "(none)"}`;
-      confusionCounts.set(confusionKey, (confusionCounts.get(confusionKey) ?? 0) + 1);
+      if (!isLegalFirstStep(rowAfter)) {
+        const confusionKey = `${rowAfter.expectedTool ?? "(none)"}→${rowAfter.actualTool ?? "(none)"}`;
+        confusionCounts.set(confusionKey, (confusionCounts.get(confusionKey) ?? 0) + 1);
+      }
       recordPersistent(persistentMap, rowBefore, "before", id, unstableBefore);
       recordPersistent(persistentMap, rowAfter, "after", id, unstableAfter);
 
       if (
-        rowBefore.selectionCorrect &&
-        !rowAfter.selectionCorrect &&
+        isLegalFirstStep(rowBefore) &&
+        !isLegalFirstStep(rowAfter) &&
         rowBefore.expectedTool &&
         rowAfter.actualTool
       ) {
-        const interferenceKey = `${rowBefore.expectedTool}→${rowAfter.actualTool}`;
+        const bucket = bucketOf(rowAfter);
+        const interferenceKey = `${bucket}→${rowBefore.expectedTool}→${rowAfter.actualTool}`;
         const entry = interferenceMap.get(interferenceKey) ?? {
+          bucket,
           expected: rowBefore.expectedTool,
           stolenBy: rowAfter.actualTool,
           cases: []
@@ -81,16 +104,28 @@ export function compareScorecards(before, after) {
         interferenceMap.set(interferenceKey, entry);
       }
 
-      if (rowBefore.passed && !rowAfter.passed) {
+      // Non-single buckets have no full-trajectory verdict yet, so their
+      // regression question is the opening move: legal before, not legal now.
+      const bucket = bucketOf(rowAfter);
+      const beforeLegal = isLegalFirstStep(rowBefore);
+      const afterLegal = isLegalFirstStep(rowAfter);
+      const regressed = bucket === "singleIntent"
+        ? rowBefore.passed && !rowAfter.passed
+        : beforeLegal && !afterLegal;
+      const fixed = bucket === "singleIntent"
+        ? !rowBefore.passed && rowAfter.passed
+        : !beforeLegal && afterLegal;
+      if (regressed) {
         regressions.push({
           id,
+          bucket,
           before: rowBefore.actualTool ?? null,
           after: rowAfter.actualTool ?? null,
           args: rowAfter.args?.failures ?? []
         });
       }
-      if (!rowBefore.passed && rowAfter.passed) {
-        fixes.push({ id, before: rowBefore.actualTool ?? null, after: rowAfter.actualTool ?? null });
+      if (fixed) {
+        fixes.push({ id, bucket, before: rowBefore.actualTool ?? null, after: rowAfter.actualTool ?? null });
       }
       if (
         rowBefore.args?.total > 0 &&
@@ -123,6 +158,7 @@ export function compareScorecards(before, after) {
           entry.occurrences >= PERSISTENT_MIN_OCCURRENCES && entry.cases.size >= PERSISTENT_MIN_CASES
       )
       .map((entry) => ({
+        bucket: entry.bucket,
         expected: entry.expected,
         stolenBy: entry.stolenBy,
         occurrences: entry.occurrences,
@@ -132,8 +168,30 @@ export function compareScorecards(before, after) {
         drifting: [...entry.cases.values()].filter(Boolean).length
       }))
       .sort(
-        (a, b) => b.occurrences - a.occurrences || a.expected.localeCompare(b.expected)
+        (a, b) =>
+          a.bucket.localeCompare(b.bucket) ||
+          b.occurrences - a.occurrences ||
+          a.expected.localeCompare(b.expected)
       );
+
+    const buckets = {};
+    for (const [name, counts] of bucketCounts) {
+      buckets[name] = {
+        reviewed: counts.reviewed,
+        selection: {
+          before: ratio(counts.selectionBefore, counts.reviewed),
+          after: ratio(counts.selectionAfter, counts.reviewed)
+        },
+        legalFirstStep: {
+          before: ratio(counts.legalBefore, counts.reviewed),
+          after: ratio(counts.legalAfter, counts.reviewed)
+        },
+        firstCallMisses: {
+          before: counts.reviewed - counts.legalBefore,
+          after: counts.reviewed - counts.legalAfter
+        }
+      };
+    }
 
     models.push({
       model: modelBefore.model,
@@ -141,10 +199,12 @@ export function compareScorecards(before, after) {
       commonCases: comparableIds.length,
       reviewed,
       excluded,
+      stabilityCaptured,
       metrics: {
         selection: { before: ratio(selectionBefore, reviewed), after: ratio(selectionAfter, reviewed) },
         pass: { before: ratio(passBefore, reviewed), after: ratio(passAfter, reviewed) }
       },
+      buckets,
       regressions,
       fixes,
       argsDrops,
@@ -284,18 +344,41 @@ export function formatCompare(report) {
     }
     lines.push(`  选择准确率: ${percent(model.metrics.selection.before)} → ${percent(model.metrics.selection.after)}`);
     lines.push(`  通过率:     ${percent(model.metrics.pass.before)} → ${percent(model.metrics.pass.after)}`);
+    if (model.buckets?.multiStep || model.buckets?.ambiguous) {
+      const parts = [];
+      const single = model.buckets.singleIntent;
+      if (single) {
+        parts.push(`singleIntent 选择 ${percent(single.selection.before)} → ${percent(single.selection.after)}`);
+      }
+      for (const name of ["multiStep", "ambiguous"]) {
+        const entry = model.buckets[name];
+        if (!entry) continue;
+        parts.push(
+          `${name} 首轮合法 ${percent(entry.legalFirstStep.before)} → ${percent(entry.legalFirstStep.after)}` +
+            `（首轮未命中 ${entry.firstCallMisses.before} → ${entry.firstCallMisses.after}）`
+        );
+      }
+      lines.push(`  分桶: ${parts.join(" · ")}`);
+    }
     if (model.interference.length > 0) {
-      lines.push("  工具间干扰（原本选对，现在被别的工具抢走）:");
+      lines.push("  工具间干扰（原本是合法首步，现在被别的工具抢走）:");
       for (const item of model.interference) {
         const tag = item.stolenByIsNewTool ? "（来自本次新增的工具）" : "";
-        lines.push(`    - ${item.expected} → ${item.stolenBy}: ${item.count} 条${tag}  ${item.cases.join(", ")}`);
+        lines.push(
+          `    - [${item.bucket ?? "singleIntent"}] ${item.expected} → ${item.stolenBy}: ${item.count} 条${tag}  ${item.cases.join(", ")}`
+        );
       }
     }
     if (model.persistentInterference?.length > 0) {
-      lines.push("  持续干扰（同一对工具 ≥3 次且 ≥2 条用例，跨比较的两份报告）:");
+      lines.push("  持续干扰（同一对工具 ≥3 次且 ≥2 条用例，跨比较的两份报告；按桶分列）:");
       for (const item of model.persistentInterference) {
         lines.push(
-          `    - ${item.expected} → ${item.stolenBy}: ${item.occurrences} 次 / ${item.cases.length} 条用例（稳定错选 ${item.stable}，高熵漂移 ${item.drifting}）  ${item.cases.join(", ")}`
+          `    - [${item.bucket ?? "singleIntent"}] ${item.expected} → ${item.stolenBy}: ${item.occurrences} 次 / ${item.cases.length} 条用例（稳定错选 ${item.stable}，高熵漂移 ${item.drifting}）  ${item.cases.join(", ")}`
+        );
+      }
+      if (!model.stabilityCaptured) {
+        lines.push(
+          "    注：至少一份报告未采集 stability 元数据（--repeat）；stable 表示未观测到漂移，不等同于已确认稳定"
         );
       }
     }
@@ -379,10 +462,26 @@ function diffEntries(beforeList, afterList, key) {
   return changes;
 }
 
+function bucketOf(row) {
+  return row?.bucket ?? "singleIntent";
+}
+
+// Old scorecards predate buckets; selectionCorrect is the legacy first-call
+// verdict, which is exactly what singleIntent still means.
+function isLegalFirstStep(row) {
+  if (typeof row?.legalFirstStep === "boolean") return row.legalFirstStep;
+  return Boolean(row?.selectionCorrect);
+}
+
 function recordPersistent(map, row, side, id, unstableIds) {
   if (!row?.expectedTool || !row.actualTool || row.expectedTool === row.actualTool) return;
-  const key = `${row.expectedTool}→${row.actualTool}`;
+  // A multiStep legal opening move is not a misroute, so it never enters the
+  // persistent-interference family.
+  if (isLegalFirstStep(row)) return;
+  const bucket = bucketOf(row);
+  const key = `${bucket}→${row.expectedTool}→${row.actualTool}`;
   const entry = map.get(key) ?? {
+    bucket,
     expected: row.expectedTool,
     stolenBy: row.actualTool,
     occurrences: 0,

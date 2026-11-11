@@ -7,6 +7,9 @@ families, and optionally scores real models on a reviewed selection suite.
 - **Static, zero-key**: `scan` / `lint` / `audit` / `check` do not call a model.
 - **Model eval, opt-in**: `eval` measures tool selection and arguments, with
   `--profile` for “same agent, different mounted toolset”.
+- **Bucketed scoring**: `singleIntent` / `multiStep` / `ambiguous` cases; a
+  legal opening move inside `acceptableFirstCalls` is not a misroute, and the
+  headline stays limited to `singleIntent`.
 - **Durable asset**: a reviewed suite is the thing worth keeping; scorecards
   carry content fingerprints so two runs are comparable.
 - **Local by default**: no telemetry, no server; the only outbound traffic is
@@ -22,10 +25,10 @@ Use it when:
 ## Install
 
 ```bash
-npx -y modelfunction-cli@0.7.0 --version
+npx -y modelfunction-cli@0.8.0 --version
 ```
 
-Agent entry points: MCP server `npx -y modelfunction-cli@0.7.0 mcp`; install
+Agent entry points: MCP server `npx -y modelfunction-cli@0.8.0 mcp`; install
 gate `import { check } from "modelfunction-cli"`. Agent-oriented commands and
 rules live in [AGENTS.md](AGENTS.md); LLM-readable summary at
 <https://modelfunction.pages.dev/llms.txt>.
@@ -34,15 +37,15 @@ rules live in [AGENTS.md](AGENTS.md); LLM-readable summary at
 
 ```bash
 # 1. Draft a suite from an MCP config, OpenAPI, function.json, or code
-npx -y modelfunction-cli@0.7.0 scan --root ./agent --out mf.suite.json
+npx -y modelfunction-cli@0.8.0 scan --root ./agent --out mf.suite.json
 
 # 2. Static checks (no model, no cost)
-npx -y modelfunction-cli@0.7.0 lint --suite mf.suite.json
-npx -y modelfunction-cli@0.7.0 audit --suite mf.suite.json --out mf-audit.md
+npx -y modelfunction-cli@0.8.0 lint --suite mf.suite.json
+npx -y modelfunction-cli@0.8.0 audit --suite mf.suite.json --out mf-audit.md
 
 # 3. Add reviewed cases, then evaluate a real model
-npx -y modelfunction-cli@0.7.0 config set-key SILICONFLOW_API_KEY
-npx -y modelfunction-cli@0.7.0 eval --suite mf.suite.json \
+npx -y modelfunction-cli@0.8.0 config set-key MODEL_API_KEY
+npx -y modelfunction-cli@0.8.0 eval --suite mf.suite.json \
   --models dsv4-flash --repeat 3 --max-cost 1 --out scorecard.md
 ```
 
@@ -65,14 +68,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: modelfunction/cli@v0.7.0
+      - uses: modelfunction/cli@v0.8.0
         with:
           mode: both
           suite: mf.suite.json
           models: dsv4-flash
           advisory: true
         env:
-          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
 ```
 
 For a fork-PR split (static on forks, eval only on same-repo branches), see

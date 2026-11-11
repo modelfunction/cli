@@ -93,11 +93,25 @@ export function costOf(usage, pricing) {
   );
 }
 
+export function legalFirstCallsOf(testCase) {
+  if (Array.isArray(testCase.acceptableFirstCalls) && testCase.acceptableFirstCalls.length > 0) {
+    return testCase.acceptableFirstCalls;
+  }
+  return testCase.expectedTool ? [testCase.expectedTool] : [];
+}
+
 export function scoreModel({ model, cases, results, pricing, scope = "base", currency = "CNY" }) {
   const rows = cases.map((testCase, index) => {
     const result = results[index];
     const actualTool = result.ok ? (result.toolCalls?.[0]?.name ?? null) : null;
     const selectionCorrect = Boolean(result.ok) && actualTool === testCase.expectedTool;
+    const bucket = testCase.bucket ?? "singleIntent";
+    // singleIntent keeps the legacy first-call verdict byte for byte; the
+    // accepts-list only widens the legal opening move for the other buckets.
+    const legalFirstStep =
+      bucket === "singleIntent"
+        ? selectionCorrect
+        : Boolean(result.ok) && actualTool !== null && legalFirstCallsOf(testCase).includes(actualTool);
     const args = selectionCorrect && testCase.expectedTool
       ? matchArgs(result.toolCalls?.[0]?.arguments, testCase.expectedArgs)
       : { total: 0, matched: 0, failures: [] };
@@ -108,6 +122,11 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
       expectedTool: testCase.expectedTool,
       actualTool,
       selectionCorrect,
+      legalFirstStep,
+      bucket,
+      ...(Array.isArray(testCase.acceptableFirstCalls) && testCase.acceptableFirstCalls.length > 0
+        ? { acceptableFirstCalls: testCase.acceptableFirstCalls }
+        : {}),
       args,
       passed,
       reviewed: testCase.reviewed !== false,
@@ -130,6 +149,28 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
   const unreviewedRows = rows.filter((row) => !row.reviewed);
   const excludedRows = rows.filter((row) => row.reviewed && excluded(row));
   const selectionHits = reviewedRows.filter((row) => row.selectionCorrect).length;
+  const buckets = {};
+  for (const bucket of ["singleIntent", "multiStep", "ambiguous"]) {
+    const bucketRows = reviewedRows.filter((row) => row.bucket === bucket);
+    const legalFirstSteps = bucketRows.filter((row) => row.legalFirstStep).length;
+    buckets[bucket] = {
+      reviewed: bucketRows.length,
+      selectionHits: bucketRows.filter((row) => row.selectionCorrect).length,
+      selectionAccuracy: bucketRows.length
+        ? bucketRows.filter((row) => row.selectionCorrect).length / bucketRows.length
+        : null,
+      legalFirstSteps,
+      legalFirstStepRate: bucketRows.length ? legalFirstSteps / bucketRows.length : null,
+      firstCallMisses: bucketRows.length - legalFirstSteps
+    };
+  }
+  const multiStepRows = reviewedRows.filter((row) => row.bucket !== "singleIntent");
+  const legalFirstStepHits = multiStepRows.filter((row) => row.legalFirstStep).length;
+  const selectionAccuracySingleIntent =
+    buckets.singleIntent.reviewed > 0 ? buckets.singleIntent.selectionAccuracy : null;
+  const legalFirstStepRate = multiStepRows.length ? legalFirstStepHits / multiStepRows.length : null;
+  const firstCallMisses = multiStepRows.length - legalFirstStepHits;
+  const hasBucketVariety = rows.some((row) => row.bucket !== "singleIntent");
   const argFields = reviewedRows.reduce((sum, row) => sum + row.args.total, 0);
   const argHits = reviewedRows.reduce((sum, row) => sum + row.args.matched, 0);
   const passed = reviewedRows.filter((row) => row.passed).length;
@@ -163,6 +204,11 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
       ? unreviewedRows.filter((row) => row.selectionCorrect).length / unreviewedRows.length
       : null,
     selectionAccuracy: reviewedTotal ? selectionHits / reviewedTotal : 0,
+    selectionAccuracySingleIntent,
+    legalFirstStepRate,
+    firstCallMisses,
+    hasBucketVariety,
+    buckets,
     selectionAccuracyExcludingErrors: scoredTotal ? selectionHitsWithoutErrors / scoredTotal : null,
     argAccuracy: argFields ? argHits / argFields : null,
     passRate: reviewedTotal ? passed / reviewedTotal : 0,

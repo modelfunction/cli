@@ -98,6 +98,25 @@ test("stored keys fill only missing model env vars and never override the enviro
   }
 });
 
+test("MODEL_API_KEY is loaded as a provider-neutral fallback", async () => {
+  const dir = await tempDir();
+  const saved = process.env.MODEL_API_KEY;
+  try {
+    await setCredential("MODEL_API_KEY", "sk-neutral-fallback");
+    delete process.env.MODEL_API_KEY;
+
+    const filled = await applyModelCredentials({
+      any: { apiKeyEnv: "ANY_PROVIDER_KEY" }
+    });
+    assert.ok(filled.includes("MODEL_API_KEY"));
+    assert.equal(process.env.MODEL_API_KEY, "sk-neutral-fallback");
+  } finally {
+    if (saved === undefined) delete process.env.MODEL_API_KEY;
+    else process.env.MODEL_API_KEY = saved;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("removeCredential deletes one key and leaves the rest", async () => {
   const dir = await tempDir();
   try {

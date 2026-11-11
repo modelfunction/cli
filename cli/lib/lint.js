@@ -126,6 +126,29 @@ function startsImperatively(text) {
   return IMPERATIVE_START_EN.test(trimmed) || IMPERATIVE_START_ZH.test(trimmed);
 }
 
+// A one-shot claim ("call this tool directly") contradicts a parameter that
+// accepts both inline content and a locator ("file contents or file paths").
+// The model reads the parameter as a licence to fetch first, and first-call
+// scoring records the legal two-step plan as a misroute.
+const ONE_SHOT_HINT = /(?:call|use)\s+(?:this|the)\s+tool\s+directly|直接调用(?:本|该|此)工具/i;
+const CONTENT_INPUT = /(?:内容|正文|\bcontents?\b|\braw text\b|\btext body\b|\binline text\b)/i;
+const LOCATOR_INPUT = /(?:路径|\bpaths?\b|\bfile ?names?\b|\bfilenames?\b|\burls?\b|\buris?\b|\blinks?\b|\blocations?\b)/i;
+const ALTERNATIVE_SPLIT = /([^.;。；\n]{0,40})(?:或者|或|\s+\bor\b\s+|\s+[\/／]\s+)([^.;。；\n]{0,40})/gi;
+
+function contradictoryAlternatives(text) {
+  for (const match of String(text ?? "").matchAll(ALTERNATIVE_SPLIT)) {
+    const left = match[1];
+    const right = match[2];
+    if (
+      (CONTENT_INPUT.test(left) && LOCATOR_INPUT.test(right)) ||
+      (LOCATOR_INPUT.test(left) && CONTENT_INPUT.test(right))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function referencedNames(text) {
   const found = new Set();
   for (const match of String(text ?? "").matchAll(BACKTICK_ID)) found.add(match[1]);
@@ -208,6 +231,7 @@ export function lintSuite(suite, { pairScope } = {}) {
   for (const tool of suite.tools) {
     const description = (tool.description ?? "").trim();
     const template = `建议：\`${tool.name}：当用户需要____时使用。输入____，返回____。不适用于____。\``;
+    const oneShotClaim = ONE_SHOT_HINT.test(description);
 
     if (tool.descriptionSource === "runtime") {
       // The description exists at runtime but is assembled in code, so static
@@ -318,6 +342,18 @@ export function lintSuite(suite, { pairScope } = {}) {
       }
       if (schema?.type === "array" && !schema.items) {
         add("warn", "param-array-no-items", tool.name, `参数 ${name} 是数组但未定义 items`, { param: name });
+      }
+      if (oneShotClaim && contradictoryAlternatives(schema?.description)) {
+        add(
+          "warn",
+          "desc-or-contradiction",
+          tool.name,
+          `参数 ${name} 同时接受“内容”和“路径/链接”两种输入，但 description 声称可直接调用；模型可能先调用读取类工具，首轮评分会把合法两步记为误选`,
+          {
+            param: name,
+            suggestion: `二选一：只接受已提供的内容，或只接受路径并在 description 写明“本工具会读取”；不要把两种输入模式放在同一参数里`
+          }
+        );
       }
     }
 

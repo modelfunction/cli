@@ -53,11 +53,19 @@
   "reviewed": true,
   "excludeFromBase": false,
   "excludeFromProfiles": false,
-  "tags": []
+  "tags": [],
+  "bucket": "singleIntent",
+  "acceptableFirstCalls": ["convert_pdf", "file_read"],
+  "bucketReason": "先读取文档再转换是合法首步"
 }
 ```
 
 - `input` 必填；`expectedTool: null` 表示负例（不该调用任何工具）。
+- `bucket`: `singleIntent`（缺省）| `multiStep` | `ambiguous`。`singleIntent` 表示任务自包含、首轮只有唯一合法工具；`multiStep` 表示缺前置信息、存在多个合法首步；`ambiguous` 表示两类合法策略并存。负例只能是 `singleIntent`。
+- `acceptableFirstCalls`: 可选、非空、必须包含 `expectedTool`，每个名字都必须在工具列表里；缺省等价于 `[expectedTool]`。只影响 `multiStep` / `ambiguous` 的首轮判定，`singleIntent` 仍按 `expectedTool` 精确匹配。
+- `bucketReason`: 可选一句话理由，供文档与评审使用，不参与评分和指纹。
+- `expectedTrajectory`: 预留字段，0.8 不实现语义。
+- 首轮评分：`multiStep` / `ambiguous` 的 `actual ∈ acceptableFirstCalls` 记为**合法首步**，不计误选；未命中单独统计（`firstCallMisses`），不进入主指标。完整验收仍需轨迹评分（0.8 不做）。
 - `expectedArgs` 仅在有 `expectedTool` 时可用；值为断言，支持字面量、`$contains`、`$oneOf`、`$exists`。
 - `toolInput` + `expect` 用于 `--execute`：`expect` 支持 `ok`、`contains`、`equals`、`errorType`、`maxDurationMs`、`maxPeakRssMB`。
 - `reviewed` 缺省为 `true`（手写用例）；`mf case add` 缺省写入 `source=agent`、`reviewed=false`。
@@ -93,7 +101,13 @@ skills 只做静态检查，不参与模型评测。
     "execution": { "runtime": "node", "engine": "node-permission", "entry": "index.mjs", "hash": "..." }
   },
   "models": [ { "model": "dsv4-flash", "total": 12, "reviewedTotal": 12, "excludedTotal": 0,
-               "selectionAccuracy": 0.83, "selectionAccuracyExcludingErrors": 0.83,
+               "selectionAccuracy": 0.83, "selectionAccuracySingleIntent": 0.9,
+               "legalFirstStepRate": 1, "firstCallMisses": 0, "hasBucketVariety": true,
+               "buckets": { "singleIntent": { "reviewed": 9, "selectionHits": 8, "selectionAccuracy": 0.89,
+                                              "legalFirstSteps": 8, "legalFirstStepRate": 0.89, "firstCallMisses": 1 },
+                            "multiStep": { "reviewed": 3, "legalFirstSteps": 3, "legalFirstStepRate": 1, "firstCallMisses": 0 },
+                            "ambiguous": { "reviewed": 1, "legalFirstSteps": 1, "legalFirstStepRate": 1, "firstCallMisses": 0 } },
+               "selectionAccuracyExcludingErrors": 0.83,
                "argAccuracy": 0.9, "passRate": 0.75, "errors": 0, "errorsByKind": {},
                "scoredTotal": 12, "retries": 0, "p50LatencyMs": 900,
                "p95LatencyMs": 1800, "avgCost": 0.001, "totalCost": 0.012,
@@ -101,7 +115,9 @@ skills 只做静态检查，不参与模型评测。
                "inputTokens": 1000, "cachedTokens": 0, "outputTokens": 200,
                "totalTokens": 1200,
                "rows": [ { "id": "c1", "expectedTool": "...", "actualTool": "...",
-                           "selectionCorrect": true, "args": { "total": 1, "matched": 1, "failures": [] },
+                           "selectionCorrect": true, "legalFirstStep": true, "bucket": "singleIntent",
+                           "acceptableFirstCalls": ["..."],
+                           "args": { "total": 1, "matched": 1, "failures": [] },
                            "passed": true, "reviewed": true, "source": "manual",
                            "latencyMs": 900, "usage": { "input": 80, "output": 20 }, "error": null,
                            "retries": 1 } ] } ],
@@ -110,14 +126,15 @@ skills 只做静态检查，不参与模型评测。
 ```
 
 - 正式指标只统计 `reviewed` 且未被 `excludeFromBase` 排除的行；未复核与排除结果单独给出。
+- **分桶口径（0.8）**：`selectionAccuracy` 保持 v1 语义（全部可评分行）；对外宣称与 `--fail-under` 使用 `selectionAccuracySingleIntent`（只含 singleIntent 桶，无分桶套件时等于前者）。`legalFirstStepRate` 是 multiStep/ambiguous 首轮命中合法首步集的比例；`firstCallMisses` 是这些桶首轮未命中的条数，单列、不进主指标。`hasBucketVariety` 表示套件里是否存在非 singleIntent 用例。行级 `bucket`、`legalFirstStep` 与可选 `acceptableFirstCalls` 会持久化进评分卡，供 compare 使用。
+- `--repeat` 时模型对象带 `stability`（翻转用例与多次结果分布）。
 - `errors` 是调用层失败（超时、HTTP、网络）的数量，按 `errorsByKind` 分类；它们仍计入 `selectionAccuracy`（保守口径），同时给出排除错误后的 `selectionAccuracyExcludingErrors` 与可评分行数 `scoredTotal`。
 - `retries` 是本轮因 429/5xx/网络错误而重试的请求次数（模型级汇总；行级只在大于 0 时出现）。重试不改变判分：最终成功的请求按正常结果计分，最终失败的仍计入 `errors`。
 - `inputTokens` / `cachedTokens` / `outputTokens` / `totalTokens` 是客观计量（`totalTokens = inputTokens + outputTokens`，缓存 token 已含在输入内）。成本需要模型注册表的 `pricing`；`currency` 取模型注册表条目（CNY/USD，默认 CNY）。读 `totalCost` / `avgCost` 时一并读 `costCurrency`；`totalCostCny` / `avgCostCny` 只在 CNY 时出现，是兼容别名。
-- `--repeat` 时模型对象带 `stability`（翻转用例与多次结果分布）。
 - `--profile` 时每个组含 `profile`、`mounted`、`allInOne`、`delta`、`lifted`、`jammed`、`errors`，以及 `usage`（`inputTokens` / `cachedTokens` / `outputTokens` / `totalTokens` / `cost` / `costCurrency`；CNY 时另带 `costCny`）；错误行不参与挂载对比（不会被记成 jammed），每个组的 `reviewed` 是可评分行数。
 - `fingerprint` 由工具与用例内容计算；`mf compare` 用它判断两份报告是否可比。
 - `mf compare` 与 `--fail-on-regression` 会跳过任一报告中标了 `excludeFromBase` 的行；对比结果里的 `excluded` 给出跳过的行数。这些行既不参与回归判定，也不进入对比指标。
-- `mf compare` 的每个模型结果带 `persistentInterference[]`：把两份报告中「期望工具 → 实际误选工具」相同的行按对聚合；`occurrences ≥ 3` 且覆盖 `cases ≥ 2` 时列入，字段为 `expected` / `stolenBy` / `occurrences` / `runs`（出现在几份报告）/ `cases` / `stable`（稳定错选用例数）/ `drifting`（`--repeat` 下高熵漂移用例数）。
+- `mf compare` 的每个模型结果带 `persistentInterference[]`：把两份报告中「期望工具 → 实际误选工具」相同的行按对聚合；`occurrences ≥ 3` 且覆盖 `cases ≥ 2` 时列入，字段为 `bucket` / `expected` / `stolenBy` / `occurrences` / `runs`（出现在几份报告）/ `cases` / `stable`（稳定错选用例数）/ `drifting`（`--repeat` 下高熵漂移用例数）。**合法首步不是误选**：multiStep/ambiguous 行只要首轮落在 `acceptableFirstCalls`，就不进入持续干扰、工具间干扰与误选分布；同一对工具在不同桶里分行列出，不跨桶合并。旧评分卡没有桶字段时按 `singleIntent` 处理。模型级 `stabilityCaptured` 表示两份报告是否都采集了 `--repeat` 元数据；为 `false` 时 `stable` 只表示“未观测到漂移”，文本输出会显式提示。模型级 `buckets` 按桶给出 `reviewed`、`selection`（前/后）、`legalFirstStep`（前/后）与 `firstCallMisses`（前/后）。
 
 ## 3. 扫描输出（`mf scan`）
 
@@ -149,6 +166,7 @@ report：`root`、`tools[]`（`name` / `description` / `parameters` / `origin` /
   - `param-optional-imperative`：可选参数的描述用了祈使句；用户输入没提供该参数时可能抑制调用。0.6.2 起扫描参数名的所有出现位置，英文只认显式“参数/parameter”搭配，名词短语（`Include tool messages`）与工具自身动作（`Send message ... by sessionKey`）不再误报。
   - `desc-dangling-tool`：描述引用了套件中不存在的工具名；`similarTo` 给出共享领域词的现有工具，通常来自改名后遗留的引用。
 - 新增 `pair-family-sibling`（info）：同族工具共享领域前缀、动作不同（`filesystem-copy-file` × `filesystem-move-file`）时不再报 `pair-no-boundary`；共享动作词的不同域工具（`search_docs` × `search_wiki`）仍然告警。
+- 新增 `desc-or-contradiction`（warn）：工具描述声称 one-shot（如 “call this tool directly”），但某个参数同时接受“内容”与“路径/链接”两种输入（如 `file contents or file paths`）。模型会把参数读成“可以先读取文件”，首轮评分因此把合法两步计划记为误选；建议二选一，或改成显式两步并在描述里写明。
 
 ## 5. cluster JSON（`mf cluster --json`）
 
@@ -191,7 +209,7 @@ import { check } from "modelfunction-cli";
 ```
 
 - `verdict` 只有 `pass` / `warn`，**没有 fail**；质量判定不阻断安装。
-- **严重度策略（门禁语境）**：只有会改变模型行为的规则保持原等级——`desc-missing`、`param-type-missing`（error），`required-unsourced`、`pair-no-boundary`、`skill-pair-no-boundary`（warn）；描述、命名、必填数量等质量规则降为 `info`，避免成熟工具集每次安装都告警。`mf lint` 不受影响，仍输出原始严重度。
+- **严重度策略（门禁语境）**：只有会改变模型行为的规则保持原等级——`desc-missing`、`param-type-missing`（error），`required-unsourced`、`pair-no-boundary`、`skill-pair-no-boundary`、`desc-or-contradiction`（warn）；描述、命名、必填数量等质量规则降为 `info`，避免成熟工具集每次安装都告警。`mf lint` 不受影响，仍输出原始严重度。
 - 抛错场景：`manifest.name` 缺失或为空；`installed` 不是上述三种形状之一（空对象仍视为无已装能力）。
 - 同步、无网络、无文件系统、无状态。类型声明见 `lib/check.d.ts`。
 - 性能（0.5.3）：每个能力只分词一次，且只比较涉及新能力的对。真实 100 能力清单（53 新 + 47 已装）约 40–50ms，47 工具对 53 skill 约 25ms；550 个高度同质的合成最坏情况约 2s。
@@ -260,7 +278,7 @@ const result = checkMany({ manifests: [/* ... */], installed: [/* ... */] });
 { "DEEPSEEK_API_KEY": "sk-…" }
 ```
 
-权限 0600（Windows 尽力）。加载规则：进程环境变量优先；凭证文件只补模型 registry 中声明的 `apiKeyEnv` 缺失项，不会向进程注入任意变量。不要提交到仓库；CI/企业用环境变量或密钥管理。
+权限 0600（Windows 尽力）。加载规则：进程环境变量优先；凭证文件只补模型 registry 中声明的 `apiKeyEnv` 缺失项，不会向进程注入任意变量。`MODEL_API_KEY` 作为中性兜底：所选模型的专属变量未设置时，openai 类型模型会改读它（模板与公开 README 使用该名字）。不要提交到仓库；CI/企业用环境变量或密钥管理。
 
 ### `~/.modelfunction/usage/YYYY-MM.jsonl`
 

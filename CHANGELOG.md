@@ -3,6 +3,29 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.8.0 — 2026-11-11
+
+- Three-bucket case schema: `bucket` (`singleIntent` | `multiStep` |
+  `ambiguous`, default `singleIntent`) and optional `acceptableFirstCalls`.
+  A multiStep/ambiguous opening move inside that set is a legal first step,
+  not a misroute; first-call misses are reported separately and stay out of
+  the headline. `selectionAccuracy` keeps its v1 all-cases meaning;
+  `selectionAccuracySingleIntent` is the external/gate headline. Bucket tags
+  persist into scorecard rows and `mf compare`, which now keeps legal first
+  steps out of persistent interference and never merges buckets.
+- New `desc-or-contradiction` warning: a tool that claims "call this tool
+  directly" while one of its parameters accepts both inline content and a
+  locator ("file contents or file paths"). The model reads that as permission
+  to fetch first; first-call scoring then records a legal two-step plan as a
+  misroute.
+- `MODEL_API_KEY` works as a provider-neutral fallback when a selected
+  model's own key variable is unset; the CI template and public README use it
+  instead of hard-coding a vendor secret name.
+- `mf compare` adds `stabilityCaptured` per model and prints an explicit note
+  when either report lacks `--repeat` data. `stable` still means
+  "no drift observed", but the output no longer lets that read as confirmed
+  stability.
+
 ## 0.7.0 — 2026-11-09
 
 - `mf compare` reports persistent interference: the same expected → actual

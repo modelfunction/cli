@@ -66,6 +66,55 @@ test("scoreModel aggregates selection, args, pass and errors", () => {
   assert.equal(summary.rows[2].actualTool, null);
 });
 
+test("scoreModel scores multiStep opening moves as legal first steps", () => {
+  const cases = [
+    { id: "s1", expectedTool: "create", expectedArgs: {} },
+    {
+      id: "m1",
+      expectedTool: "create",
+      expectedArgs: {},
+      bucket: "multiStep",
+      acceptableFirstCalls: ["create", "read"]
+    },
+    {
+      id: "m2",
+      expectedTool: "create",
+      expectedArgs: {},
+      bucket: "multiStep",
+      acceptableFirstCalls: ["create", "read"]
+    },
+    {
+      id: "a1",
+      expectedTool: "tavily",
+      expectedArgs: {},
+      bucket: "ambiguous",
+      acceptableFirstCalls: ["tavily", "google"]
+    }
+  ];
+  const results = [
+    { ok: true, toolCalls: [{ name: "create", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "read", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "write", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "google", arguments: {} }], usage: {}, latencyMs: 1 }
+  ];
+
+  const summary = scoreModel({ model: "m", cases, results, pricing: null });
+  assert.equal(summary.selectionAccuracy, 0.25);
+  assert.equal(summary.selectionAccuracySingleIntent, 1);
+  assert.equal(summary.hasBucketVariety, true);
+  assert.equal(summary.buckets.singleIntent.reviewed, 1);
+  assert.equal(summary.buckets.multiStep.reviewed, 2);
+  assert.equal(summary.buckets.multiStep.legalFirstSteps, 1);
+  assert.equal(summary.buckets.multiStep.firstCallMisses, 1);
+  assert.equal(summary.buckets.ambiguous.legalFirstSteps, 1);
+  assert.equal(summary.firstCallMisses, 1);
+  assert.equal(summary.legalFirstStepRate, 2 / 3);
+  assert.equal(summary.rows[1].legalFirstStep, true);
+  assert.equal(summary.rows[1].selectionCorrect, false);
+  assert.equal(summary.rows[2].legalFirstStep, false);
+  assert.deepEqual(summary.rows[1].acceptableFirstCalls, ["create", "read"]);
+});
+
 test("scoreModel excludes excludeFromBase cases from base metrics", () => {
   const cases = [
     { id: "a", expectedTool: "x", expectedArgs: {} },

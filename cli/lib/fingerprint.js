@@ -24,12 +24,23 @@ export function toolFingerprint(tool) {
 }
 
 export function caseFingerprint(testCase) {
+  const bucket = testCase.bucket ?? "singleIntent";
   return hashOf({
     input: testCase.input ?? "",
     expectedTool: testCase.expectedTool ?? null,
     expectedArgs: testCase.expectedArgs ?? {},
     toolInput: testCase.toolInput ?? null,
-    expect: testCase.expect ?? null
+    expect: testCase.expect ?? null,
+    // Default singleIntent without an accepts-list scores exactly as v1 did;
+    // only tags that change scoring semantics may change the hash.
+    ...(bucket !== "singleIntent"
+      ? {
+          bucket,
+          ...(Array.isArray(testCase.acceptableFirstCalls) && testCase.acceptableFirstCalls.length > 0
+            ? { acceptableFirstCalls: [...testCase.acceptableFirstCalls].sort() }
+            : {})
+        }
+      : {})
   });
 }
 
