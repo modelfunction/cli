@@ -541,6 +541,75 @@ test("lint does not flag content/path alternatives without a one-shot claim", ()
   assert.equal(findings.length, 0);
 });
 
+function contradictionSuite(description) {
+  return {
+    tools: [
+      {
+        name: "create_html_report",
+        description,
+        parameters: {
+          type: "object",
+          properties: {
+            files: { type: "string", description: "List of file contents or file paths" }
+          }
+        }
+      }
+    ]
+  };
+}
+
+function contradictionFindings(description) {
+  return lintSuite(contradictionSuite(description)).findings.filter(
+    (item) => item.code === "desc-or-contradiction"
+  );
+}
+
+test("lint flags an imperative-negative one-shot claim", () => {
+  const findings = contradictionFindings(
+    "Generate an HTML report. This tool does the reading and writing itself — do NOT call file_read or file_saver first, and do not paste file contents manually."
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].param, "files");
+});
+
+test("lint flags a self-contained one-shot claim without a direct-call phrase", () => {
+  const findings = contradictionFindings(
+    "Generate an HTML report from one or more files already stored in this session. It performs the reading and writing itself; no preliminary read step is needed."
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].param, "files");
+});
+
+test("lint flags Chinese imperative-negative and self-contained claims", () => {
+  assert.equal(contradictionFindings("生成 HTML 报告，不要先调用 file_read，本工具会自行读取文件。").length, 1);
+  assert.equal(contradictionFindings("生成 HTML 报告，本工具自行完成读取和写入。").length, 1);
+});
+
+test("a repaired description that accepts only paths stays silent even with a one-shot claim", () => {
+  const suite = {
+    tools: [
+      {
+        name: "create_html_report",
+        description:
+          "Generate an HTML report. This tool does the reading itself — do NOT call file_read first. Input must be file paths.",
+        parameters: {
+          type: "object",
+          properties: { files: { type: "string", description: "List of file paths" } }
+        }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings.filter((item) => item.code === "desc-or-contradiction");
+  assert.equal(findings.length, 0);
+});
+
+test("an imperative negative about an unrelated tool does not trigger the rule", () => {
+  const findings = contradictionFindings(
+    "Generate an HTML report. Do not call this tool before the user confirms the title. The files parameter accepts file contents or file paths."
+  );
+  assert.equal(findings.length, 0);
+});
+
 test("lint checks every occurrence of an optional parameter name", () => {
   const suite = {
     tools: [
