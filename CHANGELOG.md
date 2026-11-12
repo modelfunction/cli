@@ -3,6 +3,27 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.9.0 — 2026-11-12
+
+- `desc-or-contradiction` now recognises the two wording families that dominate
+  real tool descriptions: imperative negatives ("do NOT call file_read first")
+  and self-contained claims ("this tool does the reading and writing itself").
+  0.8.0 only recognised "call this tool directly", so it missed its own anchor
+  family. Chinese equivalents are covered too.
+- `singleIntent` is split by case polarity: `buckets.singleIntent.positives` /
+  `negatives` and the top-level `selectionAccuracySingleIntentPositives` /
+  `abstentionRateSingleIntent` report selection and abstention separately.
+  `selectionAccuracySingleIntent` keeps its 0.8 meaning (both mixed) for gate
+  compatibility, and both SCHEMA and the report now disclose that it is mixed.
+  `scored` excludes transport-error rows from both sub-rates.
+- Multi-step transport failures no longer hide inside behavioural misses:
+  `firstCallErrors`, `firstCallBehaviorMisses` and
+  `legalFirstStepRateExcludingErrors` separate "the model chose wrong" from
+  "the request never completed" (429/timeout/network).
+- Human-readable reports show the canonical `selectionAccuracySingleIntent` in
+  the select column and print the positive/negative breakdown when negatives
+  exist.
+
 ## 0.8.0 — 2026-11-11
 
 - Three-bucket case schema: `bucket` (`singleIntent` | `multiStep` |

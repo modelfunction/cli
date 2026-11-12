@@ -188,6 +188,47 @@ test("scoreModel treats no-tool cases correctly", () => {
   assert.equal(summary.totalCostCny, 0);
 });
 
+test("scoreModel splits singleIntent selection from negative-case abstention", () => {
+  const cases = [
+    ...Array.from({ length: 13 }, (_, index) => ({ id: `p${index}`, expectedTool: "x", expectedArgs: {} })),
+    ...Array.from({ length: 2 }, (_, index) => ({ id: `n${index}`, expectedTool: null, expectedArgs: {} }))
+  ];
+  const results = [
+    ...Array.from({ length: 9 }, () => ({ ok: true, toolCalls: [{ name: "x", arguments: {} }], usage: {}, latencyMs: 1 })),
+    ...Array.from({ length: 4 }, () => ({ ok: true, toolCalls: [{ name: "y", arguments: {} }], usage: {}, latencyMs: 1 })),
+    ...Array.from({ length: 2 }, () => ({ ok: true, toolCalls: [], usage: {}, latencyMs: 1 }))
+  ];
+
+  const summary = scoreModel({ model: "m", cases, results, pricing: null });
+  assert.equal(summary.selectionAccuracySingleIntent, 11 / 15);
+  assert.equal(summary.selectionAccuracySingleIntentPositives, 9 / 13);
+  assert.equal(summary.abstentionRateSingleIntent, 1);
+  assert.deepEqual(summary.buckets.singleIntent.positives, { reviewed: 13, scored: 13, hits: 9, accuracy: 9 / 13 });
+  assert.deepEqual(summary.buckets.singleIntent.negatives, { reviewed: 2, scored: 2, hits: 2, accuracy: 1 });
+});
+
+test("scoreModel keeps transport errors out of the behavioural first-step denominator", () => {
+  const cases = [
+    { id: "ok", expectedTool: "create", bucket: "multiStep", acceptableFirstCalls: ["create", "read"] },
+    { id: "miss", expectedTool: "create", bucket: "multiStep", acceptableFirstCalls: ["create", "read"] },
+    { id: "err", expectedTool: "create", bucket: "multiStep", acceptableFirstCalls: ["create", "read"] }
+  ];
+  const results = [
+    { ok: true, toolCalls: [{ name: "read", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "write", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: false, error: "HTTP 429: rate limited", toolCalls: [], usage: {}, latencyMs: 0 }
+  ];
+
+  const summary = scoreModel({ model: "m", cases, results, pricing: null });
+  assert.equal(summary.firstCallMisses, 2);
+  assert.equal(summary.firstCallErrors, 1);
+  assert.equal(summary.legalFirstStepRate, 1 / 3);
+  assert.equal(summary.legalFirstStepRateExcludingErrors, 1 / 2);
+  assert.equal(summary.buckets.multiStep.firstCallErrors, 1);
+  assert.equal(summary.buckets.multiStep.firstCallBehaviorMisses, 1);
+  assert.equal(summary.buckets.multiStep.legalFirstStepRateExcludingErrors, 1 / 2);
+});
+
 test("pct formats ratios", () => {
   assert.equal(pct(0.846), "85%");
   assert.equal(pct(0), "0%");

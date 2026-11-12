@@ -102,11 +102,19 @@ skills 只做静态检查，不参与模型评测。
   },
   "models": [ { "model": "dsv4-flash", "total": 12, "reviewedTotal": 12, "excludedTotal": 0,
                "selectionAccuracy": 0.83, "selectionAccuracySingleIntent": 0.9,
-               "legalFirstStepRate": 1, "firstCallMisses": 0, "hasBucketVariety": true,
+               "selectionAccuracySingleIntentPositives": 1, "abstentionRateSingleIntent": 0,
+               "legalFirstStepRate": 1, "legalFirstStepRateExcludingErrors": 1,
+               "firstCallMisses": 0, "firstCallErrors": 0, "hasBucketVariety": true,
                "buckets": { "singleIntent": { "reviewed": 9, "selectionHits": 8, "selectionAccuracy": 0.89,
+                                              "positives": { "reviewed": 8, "scored": 8, "hits": 8, "accuracy": 1 },
+                                              "negatives": { "reviewed": 1, "scored": 1, "hits": 0, "accuracy": 0 },
                                               "legalFirstSteps": 8, "legalFirstStepRate": 0.89, "firstCallMisses": 1 },
-                            "multiStep": { "reviewed": 3, "legalFirstSteps": 3, "legalFirstStepRate": 1, "firstCallMisses": 0 },
-                            "ambiguous": { "reviewed": 1, "legalFirstSteps": 1, "legalFirstStepRate": 1, "firstCallMisses": 0 } },
+                            "multiStep": { "reviewed": 3, "legalFirstSteps": 3, "legalFirstStepRate": 1,
+                                           "legalFirstStepRateExcludingErrors": 1, "firstCallMisses": 0,
+                                           "firstCallErrors": 0, "firstCallBehaviorMisses": 0 },
+                            "ambiguous": { "reviewed": 1, "legalFirstSteps": 1, "legalFirstStepRate": 1,
+                                           "legalFirstStepRateExcludingErrors": 1, "firstCallMisses": 0,
+                                           "firstCallErrors": 0, "firstCallBehaviorMisses": 0 } },
                "selectionAccuracyExcludingErrors": 0.83,
                "argAccuracy": 0.9, "passRate": 0.75, "errors": 0, "errorsByKind": {},
                "scoredTotal": 12, "retries": 0, "p50LatencyMs": 900,
@@ -127,6 +135,9 @@ skills 只做静态检查，不参与模型评测。
 
 - 正式指标只统计 `reviewed` 且未被 `excludeFromBase` 排除的行；未复核与排除结果单独给出。
 - **分桶口径（0.8）**：`selectionAccuracy` 保持 v1 语义（全部可评分行）；对外宣称与 `--fail-under` 使用 `selectionAccuracySingleIntent`（只含 singleIntent 桶，无分桶套件时等于前者）。`legalFirstStepRate` 是 multiStep/ambiguous 首轮命中合法首步集的比例；`firstCallMisses` 是这些桶首轮未命中的条数，单列、不进主指标。`hasBucketVariety` 表示套件里是否存在非 singleIntent 用例。行级 `bucket`、`legalFirstStep` 与可选 `acceptableFirstCalls` 会持久化进评分卡，供 compare 使用。
+- **主指标含负例（0.9 披露）**：负例（`expectedTool: null`）按设计只能进 `singleIntent`，所以 `selectionAccuracySingleIntent` 同时包含“正例选对”和“负例克制”两种能力，**正负比例不同的套件之间不可直接横比**。分解字段：`buckets.singleIntent.positives` / `negatives`（各含 `reviewed` / `scored` / `hits` / `accuracy`），顶层 `selectionAccuracySingleIntentPositives` 与 `abstentionRateSingleIntent`。`scored` 排除调用层错误行；正例选择率与负例克制率应作为两个数字分别汇报。混合主指标保留是为了兼容 0.8 的门禁与历史阈值。
+- **传输错误行（0.9）**：多步桶里的调用层错误行（429/超时/网络）既不是“合法首步”也不是行为性误选——`firstCallMisses` 仍按 0.8 口径含错误行，新增 `firstCallErrors`（错误行数）、`firstCallBehaviorMisses`（真正选错的首步数）与 `legalFirstStepRateExcludingErrors`；顶层同样给出 `firstCallErrors` / `legalFirstStepRateExcludingErrors`。
+- **no-call 口径**：正例（`expectedTool` 非 null）模型未调用任何工具时，`actualTool` 为 null、`selectionCorrect` 为 false，保留在 singleIntent 分母中按未选中计。它属于模型决策而非调用层错误，`selectionAccuracyExcludingErrors` 只排除超时/HTTP/网络，不排除 no-call。
 - `--repeat` 时模型对象带 `stability`（翻转用例与多次结果分布）。
 - `errors` 是调用层失败（超时、HTTP、网络）的数量，按 `errorsByKind` 分类；它们仍计入 `selectionAccuracy`（保守口径），同时给出排除错误后的 `selectionAccuracyExcludingErrors` 与可评分行数 `scoredTotal`。
 - `retries` 是本轮因 429/5xx/网络错误而重试的请求次数（模型级汇总；行级只在大于 0 时出现）。重试不改变判分：最终成功的请求按正常结果计分，最终失败的仍计入 `errors`。

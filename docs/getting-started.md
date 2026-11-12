@@ -9,7 +9,7 @@
 - 一个 OpenAI 兼容的模型端点与 Key（DeepSeek / Qwen / GLM / SiliconFlow / OpenAI，或本地 Ollama）
 
 ```bash
-npx -y modelfunction-cli@0.8.0 --version
+npx -y modelfunction-cli@0.9.0 --version
 ```
 
 可选：装成本地依赖，启动更快
@@ -155,7 +155,7 @@ npx mf ablate --suite mf.suite.json --profile screening \
   "mcpServers": {
     "modelfunction": {
       "command": "npx",
-      "args": ["-y", "modelfunction-cli@0.8.0", "mcp"]
+      "args": ["-y", "modelfunction-cli@0.9.0", "mcp"]
     }
   }
 }

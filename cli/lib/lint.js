@@ -126,11 +126,19 @@ function startsImperatively(text) {
   return IMPERATIVE_START_EN.test(trimmed) || IMPERATIVE_START_ZH.test(trimmed);
 }
 
-// A one-shot claim ("call this tool directly") contradicts a parameter that
-// accepts both inline content and a locator ("file contents or file paths").
-// The model reads the parameter as a licence to fetch first, and first-call
-// scoring records the legal two-step plan as a misroute.
+// A one-shot claim contradicts a parameter that accepts both inline content and
+// a locator ("file contents or file paths"). The model reads the parameter as a
+// licence to fetch first, and first-call scoring records the legal two-step plan
+// as a misroute. The claim has three observed wordings: direct-call ("call this
+// tool directly"), imperative negative ("do NOT call file_read first") and
+// self-contained ("this tool does the reading itself"). Only the first was
+// recognised in 0.8.0, and the field data says the latter two dominate.
 const ONE_SHOT_HINT = /(?:call|use)\s+(?:this|the)\s+tool\s+directly|直接调用(?:本|该|此)工具/i;
+const ONE_SHOT_FORBIDS_PREP =
+  /\b(?:do\s+not|don't|never)\s+(?:call|use|invoke)\s+[^\s,.!?;]+(?:\s+or\s+[^\s,.!?;]+)*\s+(?:first|before|prior)\b/i;
+const ONE_SHOT_SELF_CONTAINED =
+  /\b(?:does|performs|handles)\s+the\s+(?:reading|writing|reading\s+and\s+writing)\b[^.!?\n]{0,30}\b(?:itself|internally)\b/i;
+const ONE_SHOT_ZH = /(?:不要|请勿|无需|不需要|禁止)\s*先\s*(?:调用|使用)|(?:本工具|该工具)(?:会)?(?:自己|自行)(?:完成)?(?:读取|读写|读和写)/;
 const CONTENT_INPUT = /(?:内容|正文|\bcontents?\b|\braw text\b|\btext body\b|\binline text\b)/i;
 const LOCATOR_INPUT = /(?:路径|\bpaths?\b|\bfile ?names?\b|\bfilenames?\b|\burls?\b|\buris?\b|\blinks?\b|\blocations?\b)/i;
 const ALTERNATIVE_SPLIT = /([^.;。；\n]{0,40})(?:或者|或|\s+\bor\b\s+|\s+[\/／]\s+)([^.;。；\n]{0,40})/gi;
@@ -231,7 +239,11 @@ export function lintSuite(suite, { pairScope } = {}) {
   for (const tool of suite.tools) {
     const description = (tool.description ?? "").trim();
     const template = `建议：\`${tool.name}：当用户需要____时使用。输入____，返回____。不适用于____。\``;
-    const oneShotClaim = ONE_SHOT_HINT.test(description);
+    const oneShotClaim =
+      ONE_SHOT_HINT.test(description) ||
+      ONE_SHOT_FORBIDS_PREP.test(description) ||
+      ONE_SHOT_SELF_CONTAINED.test(description) ||
+      ONE_SHOT_ZH.test(description);
 
     if (tool.descriptionSource === "runtime") {
       // The description exists at runtime but is assembled in code, so static
@@ -348,7 +360,7 @@ export function lintSuite(suite, { pairScope } = {}) {
           "warn",
           "desc-or-contradiction",
           tool.name,
-          `参数 ${name} 同时接受“内容”和“路径/链接”两种输入，但 description 声称可直接调用；模型可能先调用读取类工具，首轮评分会把合法两步记为误选`,
+          `参数 ${name} 同时接受“内容”和“路径/链接”两种输入，但 description 声称无需前置调用；模型可能先调用读取类工具，首轮评分会把合法两步记为误选`,
           {
             param: name,
             suggestion: `二选一：只接受已提供的内容，或只接受路径并在 description 写明“本工具会读取”；不要把两种输入模式放在同一参数里`

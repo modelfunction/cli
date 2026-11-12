@@ -18,19 +18,32 @@ export function formatBucketLine(summary) {
   const parts = [];
   const single = summary.buckets?.singleIntent;
   if (single?.reviewed > 0) {
-    parts.push(`singleIntent ${single.selectionHits}/${single.reviewed} (${pct(single.selectionAccuracy)})`);
+    const positives = single.positives;
+    const negatives = single.negatives;
+    if (positives?.reviewed > 0 && negatives?.reviewed > 0) {
+      parts.push(
+        `singleIntent 正例 ${positives.hits}/${positives.scored} (${pct(positives.accuracy)}) · 负例克制 ${negatives.hits}/${negatives.scored} (${pct(negatives.accuracy)}) · 混合 ${single.selectionHits}/${single.reviewed} (${pct(single.selectionAccuracy)})`
+      );
+    } else {
+      parts.push(`singleIntent ${single.selectionHits}/${single.reviewed} (${pct(single.selectionAccuracy)})`);
+    }
   }
   for (const bucket of ["multiStep", "ambiguous"]) {
     const entry = summary.buckets?.[bucket];
     if (entry?.reviewed > 0) {
-      parts.push(`${bucket} 首轮合法 ${entry.legalFirstSteps}/${entry.reviewed}`);
+      const errors = entry.firstCallErrors ?? 0;
+      parts.push(
+        errors > 0
+          ? `${bucket} 首轮合法 ${entry.legalFirstSteps}/${entry.reviewed}（${errors} 行传输错误另计）`
+          : `${bucket} 首轮合法 ${entry.legalFirstSteps}/${entry.reviewed}`
+      );
     }
   }
-  if (summary.firstCallMisses > 0) {
-    const misses = summary.rows
-      .filter((row) => row.bucket !== "singleIntent" && row.reviewed !== false && !row.legalFirstStep)
-      .map((row) => row.id);
-    parts.push(`首轮未命中 ${summary.firstCallMisses}（${misses.join(", ")}）`);
+  const behaviorMisses = summary.rows.filter(
+    (row) => row.bucket !== "singleIntent" && row.reviewed !== false && !row.legalFirstStep && !row.error
+  );
+  if (behaviorMisses.length > 0) {
+    parts.push(`首轮未命中 ${behaviorMisses.length}（${behaviorMisses.map((row) => row.id).join(", ")}）`);
   }
   return `buckets: ${parts.join(" · ")}`;
 }
@@ -62,7 +75,7 @@ export function formatTable(summaries) {
   const headers = ["model", "select", "args", "pass", "p50ms", "p95ms", "cost/call", "errors"];
   const rows = summaries.map((summary) => [
     summary.model,
-    pct(summary.selectionAccuracy),
+    pct(summary.selectionAccuracySingleIntent ?? summary.selectionAccuracy),
     pct(summary.argAccuracy),
     pct(summary.passRate),
     String(summary.p50LatencyMs),
@@ -93,6 +106,7 @@ export function formatMarkdown(suite, cases, summaries) {
     `- Tools: ${suite.tools.map((tool) => tool.name).join(", ")}`,
     `- Fingerprint: \`${fingerprint.hash}\``,
     `- Tool versions: ${fingerprint.tools.map((tool) => `${tool.name}@${tool.hash}`).join(", ")}`,
+    `- 主指标（canonical）: \`selectionAccuracySingleIntent\`（\`select\` 列即此值）；\`selectionAccuracy\` 是全量兼容字段，不作对外口径`,
     ""
   ];
 
@@ -105,7 +119,7 @@ export function formatMarkdown(suite, cases, summaries) {
   for (const summary of summaries) {
     const cells = [
       summary.model,
-      pct(summary.selectionAccuracy),
+      pct(summary.selectionAccuracySingleIntent ?? summary.selectionAccuracy),
       pct(summary.argAccuracy),
       pct(summary.passRate)
     ];

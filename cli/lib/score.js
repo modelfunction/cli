@@ -153,7 +153,9 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
   for (const bucket of ["singleIntent", "multiStep", "ambiguous"]) {
     const bucketRows = reviewedRows.filter((row) => row.bucket === bucket);
     const legalFirstSteps = bucketRows.filter((row) => row.legalFirstStep).length;
-    buckets[bucket] = {
+    const errorRowsInBucket = bucketRows.filter((row) => row.error).length;
+    const bucketMisses = bucketRows.length - legalFirstSteps;
+    const entry = {
       reviewed: bucketRows.length,
       selectionHits: bucketRows.filter((row) => row.selectionCorrect).length,
       selectionAccuracy: bucketRows.length
@@ -161,14 +163,46 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
         : null,
       legalFirstSteps,
       legalFirstStepRate: bucketRows.length ? legalFirstSteps / bucketRows.length : null,
-      firstCallMisses: bucketRows.length - legalFirstSteps
+      firstCallMisses: bucketMisses
     };
+    // A transport failure is not a behavioural miss: keep it countable but out
+    // of the behavioural denominator, or a 429 night reads as a worse suite.
+    if (bucket !== "singleIntent") {
+      entry.firstCallErrors = errorRowsInBucket;
+      entry.firstCallBehaviorMisses = Math.max(0, bucketMisses - errorRowsInBucket);
+      entry.legalFirstStepRateExcludingErrors =
+        bucketRows.length - errorRowsInBucket > 0
+          ? legalFirstSteps / (bucketRows.length - errorRowsInBucket)
+          : null;
+    } else {
+      const split = (subset) => {
+        const scored = subset.filter((row) => !row.error);
+        const hits = scored.filter((row) => row.selectionCorrect).length;
+        return {
+          reviewed: subset.length,
+          scored: scored.length,
+          hits,
+          accuracy: scored.length ? hits / scored.length : null
+        };
+      };
+      // Selection ("call the right tool") and abstention ("do not call when
+      // nothing fits") are two abilities; expectedTool=null cases live in this
+      // bucket by design, so report them apart instead of blending the two.
+      entry.positives = split(bucketRows.filter((row) => row.expectedTool !== null));
+      entry.negatives = split(bucketRows.filter((row) => row.expectedTool === null));
+    }
+    buckets[bucket] = entry;
   }
   const multiStepRows = reviewedRows.filter((row) => row.bucket !== "singleIntent");
   const legalFirstStepHits = multiStepRows.filter((row) => row.legalFirstStep).length;
+  const firstCallErrors = multiStepRows.filter((row) => row.error).length;
   const selectionAccuracySingleIntent =
     buckets.singleIntent.reviewed > 0 ? buckets.singleIntent.selectionAccuracy : null;
   const legalFirstStepRate = multiStepRows.length ? legalFirstStepHits / multiStepRows.length : null;
+  const legalFirstStepRateExcludingErrors =
+    multiStepRows.length - firstCallErrors > 0
+      ? legalFirstStepHits / (multiStepRows.length - firstCallErrors)
+      : null;
   const firstCallMisses = multiStepRows.length - legalFirstStepHits;
   const hasBucketVariety = rows.some((row) => row.bucket !== "singleIntent");
   const argFields = reviewedRows.reduce((sum, row) => sum + row.args.total, 0);
@@ -205,8 +239,12 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
       : null,
     selectionAccuracy: reviewedTotal ? selectionHits / reviewedTotal : 0,
     selectionAccuracySingleIntent,
+    selectionAccuracySingleIntentPositives: buckets.singleIntent.positives.accuracy,
+    abstentionRateSingleIntent: buckets.singleIntent.negatives.accuracy,
     legalFirstStepRate,
+    legalFirstStepRateExcludingErrors,
     firstCallMisses,
+    firstCallErrors,
     hasBucketVariety,
     buckets,
     selectionAccuracyExcludingErrors: scoredTotal ? selectionHitsWithoutErrors / scoredTotal : null,
