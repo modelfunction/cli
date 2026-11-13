@@ -291,6 +291,8 @@ const result = checkMany({ manifests: [/* ... */], installed: [/* ... */] });
 
 权限 0600（Windows 尽力）。加载规则：进程环境变量优先；凭证文件只补模型 registry 中声明的 `apiKeyEnv` 缺失项，不会向进程注入任意变量。`MODEL_API_KEY` 作为中性兜底：所选模型的专属变量未设置时，openai 类型模型会改读它（模板与公开 README 使用该名字）。不要提交到仓库；CI/企业用环境变量或密钥管理。
 
+模型解析（0.9.1 起）：未显式传 `--models` 时，只自动选择已解析到密钥的模型；若一个都解析不到，`mf eval` / `mf ablate` 报错并以退出码 1 结束，错误信息列出期望的环境变量名——**不再自动回落到 mock**。无密钥的演示或冒烟请显式传 `--models mock`。
+
 ### `~/.modelfunction/usage/YYYY-MM.jsonl`
 
 每行一个 JSON 事件（UTF-8，按 UTC 月份分文件；`ts` 为 ISO 8601）：

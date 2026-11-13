@@ -241,3 +241,37 @@ test("--max-cost stops the run and returns exit code 2", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("a run with no resolvable model errors instead of silently scoring with mock", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "mf-nokey-"));
+  const modelsFile = join(dir, "models.json");
+  const priorConfigDir = process.env.MF_CONFIG_DIR;
+  const priorTestKey = process.env.MF_TEST_MISSING_KEY;
+  delete process.env.MF_TEST_MISSING_KEY;
+  await writeFile(
+    modelsFile,
+    JSON.stringify({
+      missing: {
+        type: "openai",
+        apiKeyEnv: "MF_TEST_MISSING_KEY",
+        baseUrl: "http://127.0.0.1:9/v1",
+        model: "missing-model"
+      }
+    }),
+    "utf8"
+  );
+  try {
+    process.env.MF_CONFIG_DIR = dir;
+    const { io } = capture();
+    await assert.rejects(
+      () => runEval(baseOptions({ models: null, modelsFile }), io),
+      /no runnable models: no API keys found; set MF_TEST_MISSING_KEY .*--models mock/
+    );
+  } finally {
+    if (priorConfigDir === undefined) delete process.env.MF_CONFIG_DIR;
+    else process.env.MF_CONFIG_DIR = priorConfigDir;
+    if (priorTestKey === undefined) delete process.env.MF_TEST_MISSING_KEY;
+    else process.env.MF_TEST_MISSING_KEY = priorTestKey;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
