@@ -863,8 +863,17 @@ async function resolveModels(ids, modelsFile, io, network = {}) {
 
   if (adapters.length === 0) {
     if (explicit) throw new Error("no runnable models");
-    io.error("no API keys found; falling back to the mock adapter");
-    adapters.push({ id: "mock", ...createMockAdapter() });
+    const envNames = [
+      ...new Set(
+        Object.values(registry)
+          .filter((config) => config?.type === "openai" && config.apiKeyEnv)
+          .map((config) => config.apiKeyEnv)
+      )
+    ];
+    const hint = envNames.length > 0 ? `set ${envNames.join(" / ")} (or MODEL_API_KEY)` : "set an API key";
+    throw new Error(
+      `no runnable models: no API keys found; ${hint}, or pass --models mock for a demo run`
+    );
   }
   return { registry, adapters };
 }

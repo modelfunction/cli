@@ -3,6 +3,14 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.9.1 — 2026-11-13
+
+- `mf eval` / `mf ablate` no longer fall back to the mock adapter when no
+  model can be resolved and `--models` was not given. The run exits 1 with the
+  expected credential names and a pointer to `--models mock`, instead of
+  producing a valid-looking mock scorecard that an unattended nightly job could
+  mistake for a real measurement. Explicit `--models mock` is unchanged.
+
 ## 0.9.0 — 2026-11-12
 
 - `desc-or-contradiction` now recognises the two wording families that dominate
