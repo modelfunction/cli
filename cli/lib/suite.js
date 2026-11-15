@@ -29,6 +29,10 @@ export async function loadSuite(suitePath, { allowEmptyCases = false, allowEmpty
     tools,
     cases,
     profiles: raw.profiles ?? null,
+    rotation:
+      raw.rotation && typeof raw.rotation === "object" && !Array.isArray(raw.rotation)
+        ? { ...raw.rotation }
+        : null,
     skills: Array.isArray(raw.skills) ? raw.skills.map(normalizeSkill) : [],
     execution:
       raw.execution && typeof raw.execution === "object" && !Array.isArray(raw.execution)
@@ -119,7 +123,7 @@ function normalizeCase(entry, index, toolNames) {
   if (toolInput && expectedTool === null) {
     throw new Error(`case ${id}: toolInput requires an expectedTool`);
   }
-  for (const key of ["excludeFromBase", "excludeFromProfiles"]) {
+  for (const key of ["excludeFromBase", "excludeFromProfiles", "retention"]) {
     if (entry[key] !== undefined && typeof entry[key] !== "boolean") {
       throw new Error(`case ${id}: "${key}" must be a boolean`);
     }
@@ -136,6 +140,7 @@ function normalizeCase(entry, index, toolNames) {
     note: entry.note ?? "",
     source: typeof entry.source === "string" && entry.source ? entry.source : "manual",
     reviewed: entry.reviewed === undefined ? true : Boolean(entry.reviewed),
+    ...(entry.retention ? { retention: true } : {}),
     ...(entry.excludeFromBase ? { excludeFromBase: true } : {}),
     ...(entry.excludeFromProfiles ? { excludeFromProfiles: true } : {}),
     tags: Array.isArray(entry.tags) ? entry.tags.map(String) : [],

@@ -583,3 +583,43 @@ test("compare diffs failureKinds when both scorecards carry them", () => {
   );
   assert.equal(legacy.models[0].failureKinds, null);
 });
+
+test("compare treats different rotation labels as not comparable", () => {
+  const suite = {
+    fingerprint: {
+      hash: "h",
+      tools: [],
+      cases: [{ id: "c1", hash: "1" }]
+    }
+  };
+  const card = (label) => ({
+    suite,
+    rotation: { label, size: 1, total: 1, selected: ["c1"] },
+    models: [
+      {
+        model: "m",
+        rows: [
+          {
+            id: "c1",
+            reviewed: true,
+            selectionCorrect: true,
+            passed: true,
+            actualTool: "a",
+            args: { total: 0, matched: 0, failures: [] }
+          }
+        ]
+      }
+    ]
+  });
+
+  const different = compareScorecards(card("night-1"), card("night-2"));
+  assert.equal(different.rotation.comparable, false);
+  assert.equal(different.models[0].comparable, false);
+  assert.equal(different.models[0].reason, "轮换集不同");
+  assert.equal(regressionGate(different).status, "skip");
+  assert.match(formatCompare(different), /rotation: night-1 → night-2（不同，判为不可比）/);
+
+  const same = compareScorecards(card("night-1"), card("night-1"));
+  assert.equal(same.rotation.comparable, true);
+  assert.equal(same.models[0].comparable, true);
+});

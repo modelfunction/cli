@@ -6,6 +6,14 @@ const PERSISTENT_MIN_CASES = 2;
 export function compareScorecards(before, after, { crossEnv = false } = {}) {
   const environment = compareEnvironments(before.environment, after.environment, { crossEnv });
   const environmentComparable = environment.comparable;
+  const rotationBefore = before.rotation ?? null;
+  const rotationAfter = after.rotation ?? null;
+  const rotationComparable =
+    !rotationBefore && !rotationAfter
+      ? true
+      : rotationBefore && rotationAfter
+        ? rotationBefore.label === rotationAfter.label && rotationBefore.size === rotationAfter.size
+        : false;
   const fingerprintBefore = before.suite?.fingerprint ?? null;
   const fingerprintAfter = after.suite?.fingerprint ?? null;
 
@@ -219,7 +227,7 @@ export function compareScorecards(before, after, { crossEnv = false } = {}) {
 
     const definitionComparable = toolChanges.length === 0 && caseChanges.length === 0 && !executionChanged;
     const stats =
-      definitionComparable && environmentComparable && reviewed > 0
+      definitionComparable && environmentComparable && rotationComparable && reviewed > 0
         ? {
             pairedSelection: pairedSelectionStats(selectionFlipRegressions, selectionFlipFixes),
             independentMde: independentMde(reviewed)
@@ -227,8 +235,9 @@ export function compareScorecards(before, after, { crossEnv = false } = {}) {
         : null;
     models.push({
       model: modelBefore.model,
-      comparable: definitionComparable && environmentComparable,
+      comparable: definitionComparable && environmentComparable && rotationComparable,
       ...(definitionComparable && !environmentComparable ? { reason: "环境不一致" } : {}),
+      ...(definitionComparable && environmentComparable && !rotationComparable ? { reason: "轮换集不同" } : {}),
       commonCases: comparableIds.length,
       reviewed,
       excluded,
@@ -271,6 +280,11 @@ export function compareScorecards(before, after, { crossEnv = false } = {}) {
     toolChanges,
     caseChanges,
     judgmentChanges: compareJudgments(before, after, caseChanges),
+    rotation: {
+      comparable: rotationComparable,
+      before: rotationBefore?.label ?? null,
+      after: rotationAfter?.label ?? null
+    },
     executionChanged,
     executionBefore,
     executionAfter,
@@ -386,6 +400,12 @@ export function regressionGate(comparison, summaries = []) {
     };
   }
 
+  if (comparison.rotation?.comparable === false) {
+    return {
+      status: "skip",
+      message: `轮换集不同（${comparison.rotation.before ?? "无"} → ${comparison.rotation.after ?? "无"}），无法判定回归（门禁跳过）`
+    };
+  }
   if (comparison.environment?.comparable === false) {
     return {
       status: "skip",
@@ -434,6 +454,12 @@ export function formatCompare(report) {
         `    ${String(entry.changedAt).slice(0, 10)} ${entry.reason}${entry.evidencePointer ? ` [${entry.evidencePointer}]` : ""}`
       );
     }
+  }
+  if (report.rotation?.before || report.rotation?.after) {
+    lines.push(
+      `rotation: ${report.rotation.before ?? "(无)"} → ${report.rotation.after ?? "(无)"}` +
+        (report.rotation.comparable ? "" : "（不同，判为不可比）")
+    );
   }
   if (report.environment) {
     for (const warning of report.environment.warnings ?? []) {

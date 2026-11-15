@@ -179,6 +179,7 @@ export function scoreModel({
       args,
       passed,
       reviewed: testCase.reviewed !== false,
+      ...(testCase.retention ? { retention: true } : {}),
       ...(testCase.excludeFromBase ? { excludeFromBase: true } : {}),
       ...(testCase.excludeFromProfiles ? { excludeFromProfiles: true } : {}),
       source: testCase.source ?? "manual",
@@ -283,6 +284,15 @@ export function scoreModel({
     hits: subset.filter((row) => row.selectionCorrect).length,
     accuracy: subset.length ? subset.filter((row) => row.selectionCorrect).length / subset.length : null
   });
+  const splitStats = (subset) => ({
+    reviewed: subset.length,
+    hits: subset.filter((row) => row.selectionCorrect).length,
+    accuracy: subset.length ? subset.filter((row) => row.selectionCorrect).length / subset.length : null
+  });
+  const caseSplit = {
+    tuning: splitStats(reviewedRows.filter((row) => !row.retention)),
+    retention: splitStats(reviewedRows.filter((row) => row.retention))
+  };
   const confusionSpace = confusableMap
     ? {
         mountedTools: mountedSet ? mountedSet.size : null,
@@ -321,6 +331,7 @@ export function scoreModel({
     errors,
     errorsByKind,
     failureKinds: countFailureKinds(reviewedRows),
+    caseSplit,
     ...(confusionSpace ? { confusionSpace } : {}),
     scoredTotal,
     retries: rows.reduce((sum, row) => sum + (row.retries ?? 0), 0),

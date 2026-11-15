@@ -318,6 +318,24 @@ test("confusion space conditions selection on mounted neighbors", () => {
   assert.equal(summary.rows.find((row) => row.id === "solo-hit").confusableNeighbors, undefined);
 });
 
+test("caseSplit reports tuning and retention separately", () => {
+  const cases = [
+    { id: "held", expectedTool: "a", expectedArgs: {}, retention: true },
+    { id: "tune-hit", expectedTool: "a", expectedArgs: {} },
+    { id: "tune-miss", expectedTool: null, expectedArgs: {} }
+  ];
+  const results = [
+    { ok: true, toolCalls: [{ name: "a", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "b", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [], usage: {}, latencyMs: 1 }
+  ];
+  const summary = scoreModel({ model: "m", cases, results, pricing: null });
+  assert.deepEqual(summary.caseSplit.retention, { reviewed: 1, hits: 1, accuracy: 1 });
+  assert.deepEqual(summary.caseSplit.tuning, { reviewed: 2, hits: 1, accuracy: 1 / 2 });
+  assert.equal(summary.rows.find((row) => row.id === "held").retention, true);
+  assert.equal(summary.rows.find((row) => row.id === "tune-hit").retention, undefined);
+});
+
 test("failure taxonomy stays conservative without a mounted tool set", () => {
   const cases = [{ id: "c", expectedTool: "a", expectedArgs: {} }];
   const results = [{ ok: true, toolCalls: [{ name: "ghost", arguments: {} }], usage: {}, latencyMs: 1 }];
