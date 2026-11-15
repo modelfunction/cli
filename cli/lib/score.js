@@ -118,9 +118,12 @@ export function scoreModel({
   pricing,
   scope = "base",
   currency = "CNY",
-  mountedTools = null
+  mountedTools = null,
+  confusables = null
 }) {
   const mountedSet = Array.isArray(mountedTools) ? new Set(mountedTools) : null;
+  const confusableMap = confusables instanceof Map ? confusables : null;
+  const neighborsOf = (name) => (confusableMap && name ? confusableMap.get(name) ?? [] : []);
   const rows = cases.map((testCase, index) => {
     const result = results[index];
     const actualTool = result.ok ? (result.toolCalls?.[0]?.name ?? null) : null;
@@ -137,6 +140,7 @@ export function scoreModel({
       : { total: 0, matched: 0, failures: [] };
     const passed = Boolean(result.ok) && selectionCorrect && args.failures.length === 0;
     const error = result.error ?? null;
+    const neighbors = testCase.expectedTool ? neighborsOf(testCase.expectedTool) : [];
     // One row has exactly one outcome. A hallucinated tool name is not the same
     // failure as picking the wrong mounted tool, and abstaining is not the same
     // as being confused — the nightly report has to tell them apart.
@@ -164,6 +168,10 @@ export function scoreModel({
       selectionCorrect,
       legalFirstStep,
       failureKind,
+      ...(neighbors.length > 0 ? { confusableNeighbors: neighbors.length } : {}),
+      ...(failureKind === "wrongTool"
+        ? { pickedNeighbor: Boolean(actualTool && neighbors.includes(actualTool)) }
+        : {}),
       bucket,
       ...(Array.isArray(testCase.acceptableFirstCalls) && testCase.acceptableFirstCalls.length > 0
         ? { acceptableFirstCalls: testCase.acceptableFirstCalls }
@@ -269,6 +277,24 @@ export function scoreModel({
   const totalTokens = inputTokens + outputTokens;
   const costCurrency = String(currency || "CNY").trim().toUpperCase();
   const reviewedTotal = reviewedRows.length;
+  const choiceRows = reviewedRows.filter((row) => row.expectedTool !== null);
+  const conditioning = (subset) => ({
+    reviewed: subset.length,
+    hits: subset.filter((row) => row.selectionCorrect).length,
+    accuracy: subset.length ? subset.filter((row) => row.selectionCorrect).length / subset.length : null
+  });
+  const confusionSpace = confusableMap
+    ? {
+        mountedTools: mountedSet ? mountedSet.size : null,
+        withNeighbors: conditioning(choiceRows.filter((row) => (row.confusableNeighbors ?? 0) > 0)),
+        withoutNeighbors: conditioning(choiceRows.filter((row) => (row.confusableNeighbors ?? 0) === 0)),
+        misroutes: {
+          toNeighbor: reviewedRows.filter((row) => row.failureKind === "wrongTool" && row.pickedNeighbor).length,
+          elsewhere: reviewedRows.filter((row) => row.failureKind === "wrongTool" && !row.pickedNeighbor).length,
+          hallucinated: reviewedRows.filter((row) => row.failureKind === "hallucinatedTool").length
+        }
+      }
+    : null;
 
   return {
     model,
@@ -295,6 +321,7 @@ export function scoreModel({
     errors,
     errorsByKind,
     failureKinds: countFailureKinds(reviewedRows),
+    ...(confusionSpace ? { confusionSpace } : {}),
     scoredTotal,
     retries: rows.reduce((sum, row) => sum + (row.retries ?? 0), 0),
     p50LatencyMs: percentile(latencies, 0.5),

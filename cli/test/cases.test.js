@@ -11,7 +11,8 @@ import {
   pairSimilarity,
   pairSimilarityPrepared,
   familyScore,
-  familyScorePrepared
+  familyScorePrepared,
+  confusableNeighbors
 } from "../lib/cases.js";
 import { scoreModel } from "../lib/score.js";
 
@@ -222,6 +223,23 @@ test("scoreModel excludes unreviewed cases from official metrics", () => {
   assert.equal(summary.passRate, 1);
   assert.equal(summary.unreviewedTotal, 1);
   assert.equal(summary.unreviewedSelectionAccuracy, 0);
+});
+
+test("confusableNeighbors links similar tools and leaves distinct ones alone", () => {
+  const params = { type: "object", properties: { q: { type: "string" } } };
+  const tools = [
+    { name: "users_search", description: "search users", parameters: params },
+    { name: "docs_search", description: "search docs", parameters: params },
+    {
+      name: "send_email",
+      description: "send an email",
+      parameters: { type: "object", properties: { to: { type: "string" } } }
+    }
+  ];
+  const neighbors = confusableNeighbors(tools);
+  assert.deepEqual(neighbors.get("users_search"), ["docs_search"]);
+  assert.deepEqual(neighbors.get("docs_search"), ["users_search"]);
+  assert.deepEqual(neighbors.get("send_email"), []);
 });
 
 test("coverage and lint accept a scan draft with no cases yet", async () => {

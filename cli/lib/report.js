@@ -69,6 +69,24 @@ export function formatFailureLine(summary) {
   return `失败分解: ${parts.join(" · ")}（${extra.join(" · ")}）`;
 }
 
+export function formatConfusionLine(summary) {
+  const space = summary.confusionSpace;
+  if (!space) return null;
+  const { withNeighbors, withoutNeighbors, misroutes } = space;
+  const misrouteTotal = misroutes.toNeighbor + misroutes.elsewhere + misroutes.hallucinated;
+  if (withNeighbors.reviewed === 0 && misrouteTotal === 0) return null;
+  const parts = [];
+  if (space.mountedTools !== null) parts.push(`挂载 ${space.mountedTools} 个工具`);
+  if (withNeighbors.reviewed > 0) {
+    parts.push(`同族干扰 ${withNeighbors.hits}/${withNeighbors.reviewed} 选对 (${pct(withNeighbors.accuracy)})`);
+  }
+  if (withoutNeighbors.reviewed > 0) {
+    parts.push(`无同族 ${withoutNeighbors.hits}/${withoutNeighbors.reviewed} 选对 (${pct(withoutNeighbors.accuracy)})`);
+  }
+  parts.push(`误选同族 ${misroutes.toNeighbor} · 其他 ${misroutes.elsewhere} · 幻觉 ${misroutes.hallucinated}`);
+  return `混淆空间: ${parts.join("；")}`;
+}
+
 export function formatCaseLines(summary, cases) {
   const lines = [];
   const byId = new Map(cases.map((testCase) => [testCase.id, testCase]));
@@ -166,7 +184,10 @@ export function formatMarkdown(suite, cases, summaries) {
     );
     if (summary.hasBucketVariety) lines.push(formatBucketLine(summary), "");
     const failureLine = formatFailureLine(summary);
-    if (failureLine) lines.push(failureLine, "");
+    if (failureLine) lines.push(failureLine);
+    const confusionLine = formatConfusionLine(summary);
+    if (confusionLine) lines.push(confusionLine);
+    if (failureLine || confusionLine) lines.push("");
     const bucketColumn = summary.hasBucketVariety;
     lines.push(
       bucketColumn ? "| case | bucket | expected | got | args | result |" : "| case | expected | got | args | result |",

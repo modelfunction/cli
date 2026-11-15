@@ -324,6 +324,24 @@ export function boundaryHint(x, y) {
   };
 }
 
+// Mirrors the cluster "boundary" edge definition so the eval side and the
+// static side agree on what counts as a confusable neighbor.
+export function confusableNeighbors(tools, { similarityThreshold = 0.35, familyThreshold = 0.6 } = {}) {
+  const prepared = tools.map((tool) => prepareItem(tool));
+  const neighbors = new Map(tools.map((tool) => [tool.name, []]));
+  for (let i = 0; i < prepared.length; i += 1) {
+    for (let j = i + 1; j < prepared.length; j += 1) {
+      const { similarity } = pairSimilarityPrepared(prepared[i], prepared[j]);
+      const family = familyScorePrepared(prepared[i], prepared[j]);
+      if (similarity >= similarityThreshold || family >= familyThreshold) {
+        neighbors.get(prepared[i].name).push(prepared[j].name);
+        neighbors.get(prepared[j].name).push(prepared[i].name);
+      }
+    }
+  }
+  return neighbors;
+}
+
 export function suspectedPairs(tools, { threshold = PAIR_SIMILARITY, extraStop } = {}) {
   const prepared = tools.map((tool) => prepareItem(tool, { extraStop }));
   const pairs = [];
