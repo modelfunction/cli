@@ -3,6 +3,19 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.11.2 — 2026-11-15
+
+- `mf compare` now diffs failure kinds: when both scorecards carry
+  `failureKinds`, each model result includes before/after counts, the kinds
+  that changed with their delta, and per-case flips (`id`, before, after).
+  Text output prints a failure breakdown change and the changed cases; the
+  field is `null` when either card predates 0.11.0. Gates and exit codes are
+  unchanged.
+- New `templates/local/stability-watch.mjs` for nightly runs: compares the
+  first and second half of the observation window per case and exits 1 only
+  when a case's majority direction changes. Chronic misses are listed once
+  instead of escalated every night.
+
 ## 0.11.1 — 2026-11-15
 
 - Confusion space: scorecards now carry `confusionSpace` — mounted tool count,
