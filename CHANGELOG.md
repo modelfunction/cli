@@ -3,6 +3,18 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.11.1 — 2026-11-15
+
+- Confusion space: scorecards now carry `confusionSpace` — mounted tool count,
+  selection accuracy split by whether the expected tool has any static family
+  neighbors in the mounted set, and misroutes attributed to a neighbor, to
+  anything else, or to a hallucinated tool. Neighbors use the same boundary
+  edges as `mf cluster` (lexical similarity ≥ .35 or family score ≥ .6) and are
+  computed inside the current mounted set, so profile and ablation runs measure
+  their own confusion space.
+- Rows carry `confusableNeighbors` (only when > 0) and `pickedNeighbor` (only
+  for `wrongTool`), and text/Markdown reports print the conditioning line.
+
 ## 0.11.0 — 2026-11-15
 
 - Failure taxonomy: every scored row carries `failureKind` (`pass` /

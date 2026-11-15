@@ -282,6 +282,42 @@ test("failure taxonomy separates no-call, hallucinated and wrong tools", () => {
   assert.equal(summary.buckets.singleIntent.failureKinds.hallucinatedTool, 1);
 });
 
+test("confusion space conditions selection on mounted neighbors", () => {
+  const cases = [
+    { id: "fam-hit", expectedTool: "a", expectedArgs: {} },
+    { id: "fam-miss", expectedTool: "a", expectedArgs: {} },
+    { id: "solo-hit", expectedTool: "z", expectedArgs: {} },
+    { id: "fam-halluc", expectedTool: "a", expectedArgs: {} }
+  ];
+  const results = [
+    { ok: true, toolCalls: [{ name: "a", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "b", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "z", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "ghost", arguments: {} }], usage: {}, latencyMs: 1 }
+  ];
+  const confusables = new Map([
+    ["a", ["b"]],
+    ["b", ["a"]],
+    ["z", []]
+  ]);
+  const summary = scoreModel({
+    model: "m",
+    cases,
+    results,
+    pricing: null,
+    mountedTools: ["a", "b", "z"],
+    confusables
+  });
+  assert.equal(summary.confusionSpace.mountedTools, 3);
+  assert.deepEqual(summary.confusionSpace.withNeighbors, { reviewed: 3, hits: 1, accuracy: 1 / 3 });
+  assert.deepEqual(summary.confusionSpace.withoutNeighbors, { reviewed: 1, hits: 1, accuracy: 1 });
+  assert.deepEqual(summary.confusionSpace.misroutes, { toNeighbor: 1, elsewhere: 0, hallucinated: 1 });
+  const miss = summary.rows.find((row) => row.id === "fam-miss");
+  assert.equal(miss.pickedNeighbor, true);
+  assert.equal(miss.confusableNeighbors, 1);
+  assert.equal(summary.rows.find((row) => row.id === "solo-hit").confusableNeighbors, undefined);
+});
+
 test("failure taxonomy stays conservative without a mounted tool set", () => {
   const cases = [{ id: "c", expectedTool: "a", expectedArgs: {} }];
   const results = [{ ok: true, toolCalls: [{ name: "ghost", arguments: {} }], usage: {}, latencyMs: 1 }];

@@ -5,11 +5,11 @@ import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSuite, toModelTools } from "./lib/suite.js";
 import { scoreModel, pickRepresentative, pct, costOf, tokensOf } from "./lib/score.js";
-import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine, formatFailureLine } from "./lib/report.js";
+import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine, formatFailureLine, formatConfusionLine } from "./lib/report.js";
 import { scanProject, buildSuiteDraft, formatScanSummary, addTools, redactReport } from "./lib/scan.js";
 import { probeStdioServer, probeHttpServer } from "./lib/mcp-probe.js";
 import { loadAdapterTools } from "./lib/adapter-import.js";
-import { addCases, computeCoverage, formatCoverage } from "./lib/cases.js";
+import { addCases, computeCoverage, formatCoverage, confusableNeighbors } from "./lib/cases.js";
 import { lintSuite, formatLint } from "./lib/lint.js";
 import { check, checkMany, formatCheck, formatCheckMany } from "./lib/check.js";
 import { auditSuite, formatAudit } from "./lib/audit.js";
@@ -157,6 +157,7 @@ export async function runEval(options, io = console) {
     }
   });
   const tools = toModelTools(suite.tools);
+  const confusables = confusableNeighbors(suite.tools);
 
   const budget = createBudget({ maxCost: options.maxCost ?? null, maxTokens: options.maxTokens ?? null });
   const runs = [];
@@ -177,7 +178,8 @@ export async function runEval(options, io = console) {
         pricing,
         scope: "base",
         currency,
-        mountedTools: suite.tools.map((tool) => tool.name)
+        mountedTools: suite.tools.map((tool) => tool.name),
+        confusables
       });
       if (evaluated.stability) summary.stability = evaluated.stability;
       runs.push({ adapter, results: evaluated.results, summary });
@@ -266,6 +268,8 @@ export async function runEval(options, io = console) {
       if (summary.hasBucketVariety) io.log(formatBucketLine(summary));
       const failureLine = formatFailureLine(summary);
       if (failureLine) io.log(failureLine);
+      const confusionLine = formatConfusionLine(summary);
+      if (confusionLine) io.log(confusionLine);
       if (summary.stability) {
         const unstable = summary.stability.unstable;
         const list = unstable.slice(0, 8).map((item) => item.id).join(", ");
@@ -440,6 +444,8 @@ export async function runAblate(options, io = console) {
 
   const fullTools = toModelTools(baseTools);
   const reducedTools = toModelTools(baseTools.filter((tool) => tool.name !== ablated.name));
+  const fullConfusables = confusableNeighbors(baseTools);
+  const reducedConfusables = confusableNeighbors(baseTools.filter((tool) => tool.name !== ablated.name));
   const models = [];
   const budget = createBudget({ maxCost: options.maxCost ?? null, maxTokens: options.maxTokens ?? null });
 
@@ -461,7 +467,8 @@ export async function runAblate(options, io = console) {
         results: fullResults,
         pricing,
         currency,
-        mountedTools: baseTools.map((tool) => tool.name)
+        mountedTools: baseTools.map((tool) => tool.name),
+        confusables: fullConfusables
       });
       const reducedResults = (
         await evaluate(adapter, reducedTools, reducedCases, 1, {
@@ -476,7 +483,8 @@ export async function runAblate(options, io = console) {
         results: reducedResults,
         pricing,
         currency,
-        mountedTools: baseTools.filter((tool) => tool.name !== ablated.name).map((tool) => tool.name)
+        mountedTools: baseTools.filter((tool) => tool.name !== ablated.name).map((tool) => tool.name),
+        confusables: reducedConfusables
       });
       models.push(analyzeAblation(adapter.id, full, reduced));
     }
@@ -1080,6 +1088,10 @@ async function evaluateProfiles({
     }
   }
 
+  const profileConfusables = selected.map((profile) =>
+    confusableNeighbors(suite.tools.filter((tool) => profile.tools.includes(tool.name)))
+  );
+  const fullConfusables = confusableNeighbors(suite.tools);
   const models = [];
   for (const run of runs) {
     const config = registry[run.adapter.id];
@@ -1102,7 +1114,8 @@ async function evaluateProfiles({
         pricing,
         scope: "profiles",
         currency,
-        mountedTools: profile.tools
+        mountedTools: profile.tools,
+        confusables: profileConfusables[index]
       });
       const allInOne = scoreModel({
         model: run.adapter.id,
@@ -1111,7 +1124,8 @@ async function evaluateProfiles({
         pricing,
         scope: "profiles",
         currency,
-        mountedTools: suite.tools.map((tool) => tool.name)
+        mountedTools: suite.tools.map((tool) => tool.name),
+        confusables: fullConfusables
       });
       const entry = analyzeMount(profile, mounted, allInOne);
       entry.usage = {
