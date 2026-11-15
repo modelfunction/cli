@@ -229,6 +229,67 @@ test("scoreModel keeps transport errors out of the behavioural first-step denomi
   assert.equal(summary.buckets.multiStep.legalFirstStepRateExcludingErrors, 1 / 2);
 });
 
+test("failure taxonomy separates no-call, hallucinated and wrong tools", () => {
+  const cases = [
+    { id: "pass", expectedTool: "a", expectedArgs: { q: "x" } },
+    { id: "args", expectedTool: "a", expectedArgs: { q: "x" } },
+    { id: "wrong", expectedTool: "a", expectedArgs: {} },
+    { id: "hallucinated", expectedTool: "a", expectedArgs: {} },
+    { id: "nocall", expectedTool: "a", expectedArgs: {} },
+    { id: "negative-ok", expectedTool: null, expectedArgs: {} },
+    { id: "negative-call", expectedTool: null, expectedArgs: {} },
+    { id: "legal", expectedTool: "c", bucket: "multiStep", acceptableFirstCalls: ["a", "c"], expectedArgs: {} },
+    { id: "transport", expectedTool: "a", expectedArgs: {} }
+  ];
+  const results = [
+    { ok: true, toolCalls: [{ name: "a", arguments: { q: "x" } }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "a", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "b", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "ghost", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "a", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: true, toolCalls: [{ name: "a", arguments: {} }], usage: {}, latencyMs: 1 },
+    { ok: false, error: "timeout", toolCalls: [], usage: {}, latencyMs: 0 }
+  ];
+
+  const summary = scoreModel({
+    model: "m",
+    cases,
+    results,
+    pricing: null,
+    mountedTools: ["a", "b", "c"]
+  });
+  assert.deepEqual(summary.failureKinds, {
+    pass: 2,
+    legalFirstStep: 1,
+    args: 1,
+    wrongTool: 1,
+    hallucinatedTool: 1,
+    noCall: 1,
+    unexpectedCall: 1,
+    transport: 1
+  });
+  const kind = (id) => summary.rows.find((row) => row.id === id).failureKind;
+  assert.equal(kind("pass"), "pass");
+  assert.equal(kind("args"), "args");
+  assert.equal(kind("wrong"), "wrongTool");
+  assert.equal(kind("hallucinated"), "hallucinatedTool");
+  assert.equal(kind("nocall"), "noCall");
+  assert.equal(kind("negative-call"), "unexpectedCall");
+  assert.equal(kind("legal"), "legalFirstStep");
+  assert.equal(kind("transport"), "transport");
+  assert.equal(summary.buckets.singleIntent.failureKinds.hallucinatedTool, 1);
+});
+
+test("failure taxonomy stays conservative without a mounted tool set", () => {
+  const cases = [{ id: "c", expectedTool: "a", expectedArgs: {} }];
+  const results = [{ ok: true, toolCalls: [{ name: "ghost", arguments: {} }], usage: {}, latencyMs: 1 }];
+  const summary = scoreModel({ model: "m", cases, results, pricing: null });
+  assert.equal(summary.rows[0].failureKind, "wrongTool");
+  assert.equal(summary.failureKinds.hallucinatedTool, 0);
+});
+
 test("pct formats ratios", () => {
   assert.equal(pct(0.846), "85%");
   assert.equal(pct(0), "0%");
