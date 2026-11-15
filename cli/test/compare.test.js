@@ -519,3 +519,67 @@ test("compare does not flag sparse interference as persistent", () => {
   );
   assert.equal(twoRunsTwoCases.models[0].persistentInterference.length, 0);
 });
+
+test("compare diffs failureKinds when both scorecards carry them", () => {
+  const suite = {
+    fingerprint: {
+      hash: "h",
+      tools: [],
+      cases: [
+        { id: "c1", hash: "1" },
+        { id: "c2", hash: "2" }
+      ]
+    }
+  };
+  const row = (id, failureKind, actualTool, ok) => ({
+    id,
+    reviewed: true,
+    failureKind,
+    selectionCorrect: ok,
+    passed: ok,
+    actualTool,
+    args: { total: 0, matched: 0, failures: [] }
+  });
+  const before = {
+    suite,
+    models: [
+      {
+        model: "m",
+        failureKinds: { noCall: 1, pass: 1 },
+        rows: [row("c1", "noCall", null, false), row("c2", "pass", "a", true)]
+      }
+    ]
+  };
+  const after = {
+    suite,
+    models: [
+      {
+        model: "m",
+        failureKinds: { wrongTool: 1, pass: 1 },
+        rows: [row("c1", "wrongTool", "b", false), row("c2", "pass", "a", true)]
+      }
+    ]
+  };
+
+  const report = compareScorecards(before, after);
+  const model = report.models[0];
+  assert.deepEqual(model.failureKinds.before, { noCall: 1, pass: 1 });
+  assert.deepEqual(model.failureKinds.after, { wrongTool: 1, pass: 1 });
+  assert.deepEqual(
+    model.failureKinds.changed.map((entry) => [entry.kind, entry.before, entry.after]),
+    [
+      ["noCall", 1, 0],
+      ["wrongTool", 0, 1]
+    ]
+  );
+  assert.deepEqual(model.failureKinds.flips, [{ id: "c1", before: "noCall", after: "wrongTool" }]);
+  const text = formatCompare(report);
+  assert.match(text, /失败分解变化: noCall 1 → 0 · wrongTool 0 → 1/);
+  assert.match(text, /失败分类改判: c1 noCall→wrongTool/);
+
+  const legacy = compareScorecards(
+    { ...before, models: [{ ...before.models[0], failureKinds: undefined }] },
+    after
+  );
+  assert.equal(legacy.models[0].failureKinds, null);
+});

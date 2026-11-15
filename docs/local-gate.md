@@ -12,6 +12,7 @@
 | `change-detect.mjs` | 变更门：suite 或模型注册表没变就跳过 eval（0 次调用） |
 | `nightly.sh` | POSIX：过变更门后跑回归，写带时间戳的评分卡 |
 | `nightly.cmd` | Windows 计划任务入口，逻辑同上 |
+| `stability-watch.mjs` | 跨晚观察：只在用例方向改变时报警，慢性失败不重复升级 |
 
 ## 0. 前置
 
@@ -70,7 +71,7 @@ templates\local\nightly.cmd
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MF_VERSION` | `0.11.1` | 固定版本，避免 npx 漂移 |
+| `MF_VERSION` | `0.11.2` | 固定版本，避免 npx 漂移 |
 | `MF_SUITE` | `mf.suite.json` | 套件 |
 | `MF_MODELS` | `mf.models.json` | 模型注册表 |
 | `MF_BASELINE` | `.mf/baseline.json` | 存在时自动加 `--baseline --fail-on-regression` |
@@ -88,6 +89,17 @@ templates\local\nightly.cmd
 - 退出码：`0` 通过（含跳过）、`2` 回归 / 基线模型缺失 / 本轮全部调用失败 / 触顶成本 / `--fail-under` 未达标。
 
 统计口径（0.10 起）：单晚门禁用 α=.05，连续 30 晚至少一次假阳性的概率约为 1−(0.95)^30≈79%——把 exit 2 当作“需要人工复核”的信号，不要当作已经确认回归。`mf compare` 会输出配对翻转的 McNemar 精确 p 值与独立设计 MDE；`--repeat` 采集过 stability 的用例发生翻转时只记 warning，不触发门禁。环境块不一致（如换了 `--models-file`）时门禁返回 skip 并点名字段，不会误报回归；跨环境比较需显式 `--cross-env`。
+
+### 跨晚稳定性观察（可选）
+
+夜间门禁只看单晚；要知道某条用例是不是“方向变了”，把最近几晚的评分卡放在一起看：
+
+```bash
+node templates/local/stability-watch.mjs --dir .mf/nightly --windows 5 --min-runs 3
+node templates/local/stability-watch.mjs --dir .mf/nightly --json --out .mf/stability.json
+```
+
+把观察窗口对半，比较前半与后半的多数方向：只有 ok → miss（或反向）才报警并 exit 1。持续 miss 的慢性失败只列出、不重复升级——否则一个已知坏用例会天天喊，把真正的方向变化淹掉。接在 nightly 之后，exit 1 时通知人即可。
 
 注册 Windows 计划任务（每天醒来，但没变更就 0 成本）：
 

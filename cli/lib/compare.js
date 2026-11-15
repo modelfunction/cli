@@ -41,6 +41,10 @@ export function compareScorecards(before, after, { crossEnv = false } = {}) {
     // evidence, not evidence of stability.
     const stabilityCaptured = Boolean(modelBefore.stability) && Boolean(modelAfter.stability);
 
+    const failureKindCaptured = Boolean(modelBefore.failureKinds && modelAfter.failureKinds);
+    const failureKindBefore = {};
+    const failureKindAfter = {};
+    const failureKindFlips = [];
     const regressions = [];
     const unstableFlips = [];
     const fixes = [];
@@ -67,6 +71,13 @@ export function compareScorecards(before, after, { crossEnv = false } = {}) {
         continue;
       }
       reviewed += 1;
+      if (failureKindCaptured) {
+        const beforeKind = rowBefore.failureKind ?? "unknown";
+        const afterKind = rowAfter.failureKind ?? "unknown";
+        failureKindBefore[beforeKind] = (failureKindBefore[beforeKind] ?? 0) + 1;
+        failureKindAfter[afterKind] = (failureKindAfter[afterKind] ?? 0) + 1;
+        if (beforeKind !== afterKind) failureKindFlips.push({ id, before: beforeKind, after: afterKind });
+      }
       if (rowBefore.selectionCorrect) selectionBefore += 1;
       if (rowAfter.selectionCorrect) selectionAfter += 1;
       if (rowBefore.passed) passBefore += 1;
@@ -228,6 +239,22 @@ export function compareScorecards(before, after, { crossEnv = false } = {}) {
       },
       stats,
       buckets,
+      failureKinds: failureKindCaptured
+        ? {
+            before: failureKindBefore,
+            after: failureKindAfter,
+            changed: [...new Set([...Object.keys(failureKindBefore), ...Object.keys(failureKindAfter)])]
+              .map((kind) => ({
+                kind,
+                before: failureKindBefore[kind] ?? 0,
+                after: failureKindAfter[kind] ?? 0,
+                delta: (failureKindAfter[kind] ?? 0) - (failureKindBefore[kind] ?? 0)
+              }))
+              .filter((entry) => entry.delta !== 0)
+              .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
+            flips: failureKindFlips
+          }
+        : null,
       regressions,
       unstableFlips,
       fixes,
@@ -453,6 +480,20 @@ export function formatCompare(report) {
         );
       }
       lines.push(`  分桶: ${parts.join(" · ")}`);
+    }
+    if (model.failureKinds?.changed.length > 0) {
+      lines.push(
+        `  失败分解变化: ${model.failureKinds.changed
+          .map((entry) => `${entry.kind} ${entry.before} → ${entry.after}`)
+          .join(" · ")}`
+      );
+    }
+    if (model.failureKinds?.flips.length > 0) {
+      const list = model.failureKinds.flips
+        .slice(0, 8)
+        .map((item) => `${item.id} ${item.before}→${item.after}`);
+      const more = model.failureKinds.flips.length > 8 ? ` 等 ${model.failureKinds.flips.length} 条` : "";
+      lines.push(`  失败分类改判: ${list.join(", ")}${more}`);
     }
     if (model.interference.length > 0) {
       lines.push("  工具间干扰（原本是合法首步，现在被别的工具抢走）:");
