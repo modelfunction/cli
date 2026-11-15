@@ -1,7 +1,11 @@
+import { compareEnvironments, formatEnvironmentDifferences } from "./environment.js";
+
 const PERSISTENT_MIN_OCCURRENCES = 3;
 const PERSISTENT_MIN_CASES = 2;
 
-export function compareScorecards(before, after) {
+export function compareScorecards(before, after, { crossEnv = false } = {}) {
+  const environment = compareEnvironments(before.environment, after.environment, { crossEnv });
+  const environmentComparable = environment.comparable;
   const fingerprintBefore = before.suite?.fingerprint ?? null;
   const fingerprintAfter = after.suite?.fingerprint ?? null;
 
@@ -38,6 +42,7 @@ export function compareScorecards(before, after) {
     const stabilityCaptured = Boolean(modelBefore.stability) && Boolean(modelAfter.stability);
 
     const regressions = [];
+    const unstableFlips = [];
     const fixes = [];
     const argsDrops = [];
     const confusionCounts = new Map();
@@ -50,6 +55,8 @@ export function compareScorecards(before, after) {
     let selectionAfter = 0;
     let passBefore = 0;
     let passAfter = 0;
+    let selectionFlipRegressions = 0;
+    let selectionFlipFixes = 0;
 
     for (const id of comparableIds) {
       const rowBefore = rowsBefore.get(id);
@@ -64,6 +71,8 @@ export function compareScorecards(before, after) {
       if (rowAfter.selectionCorrect) selectionAfter += 1;
       if (rowBefore.passed) passBefore += 1;
       if (rowAfter.passed) passAfter += 1;
+      if (rowBefore.selectionCorrect && !rowAfter.selectionCorrect) selectionFlipRegressions += 1;
+      if (!rowBefore.selectionCorrect && rowAfter.selectionCorrect) selectionFlipFixes += 1;
       const bucketKey = bucketOf(rowAfter);
       const counts = bucketCounts.get(bucketKey) ?? {
         reviewed: 0,
@@ -116,13 +125,17 @@ export function compareScorecards(before, after) {
         ? !rowBefore.passed && rowAfter.passed
         : !beforeLegal && afterLegal;
       if (regressed) {
-        regressions.push({
+        const unstable =
+          stabilityCaptured && (unstableBefore.has(id) || unstableAfter.has(id));
+        const entry = {
           id,
           bucket,
           before: rowBefore.actualTool ?? null,
           after: rowAfter.actualTool ?? null,
           args: rowAfter.args?.failures ?? []
-        });
+        };
+        if (unstable) unstableFlips.push(entry);
+        else regressions.push(entry);
       }
       if (fixed) {
         fixes.push({ id, bucket, before: rowBefore.actualTool ?? null, after: rowAfter.actualTool ?? null });
@@ -193,9 +206,18 @@ export function compareScorecards(before, after) {
       };
     }
 
+    const definitionComparable = toolChanges.length === 0 && caseChanges.length === 0 && !executionChanged;
+    const stats =
+      definitionComparable && environmentComparable && reviewed > 0
+        ? {
+            pairedSelection: pairedSelectionStats(selectionFlipRegressions, selectionFlipFixes),
+            independentMde: independentMde(reviewed)
+          }
+        : null;
     models.push({
       model: modelBefore.model,
-      comparable: toolChanges.length === 0 && caseChanges.length === 0 && !executionChanged,
+      comparable: definitionComparable && environmentComparable,
+      ...(definitionComparable && !environmentComparable ? { reason: "环境不一致" } : {}),
       commonCases: comparableIds.length,
       reviewed,
       excluded,
@@ -204,8 +226,10 @@ export function compareScorecards(before, after) {
         selection: { before: ratio(selectionBefore, reviewed), after: ratio(selectionAfter, reviewed) },
         pass: { before: ratio(passBefore, reviewed), after: ratio(passAfter, reviewed) }
       },
+      stats,
       buckets,
       regressions,
+      unstableFlips,
       fixes,
       argsDrops,
       confusion,
@@ -219,12 +243,45 @@ export function compareScorecards(before, after) {
     afterHash: fingerprintAfter?.hash ?? null,
     toolChanges,
     caseChanges,
+    judgmentChanges: compareJudgments(before, after, caseChanges),
     executionChanged,
     executionBefore,
     executionAfter,
+    environment,
     models,
     profiles: compareProfiles(before, after)
   };
+}
+
+function compareJudgments(before, after, caseChanges) {
+  if (caseChanges.length === 0) return [];
+  const judgmentsFor = (report, id) =>
+    (report.suite?.judgments ?? []).filter((entry) => entry.caseId === id);
+  return caseChanges.map((change) => {
+    const seen = new Set();
+    const judgments = [];
+    for (const entry of [...judgmentsFor(after, change.name), ...judgmentsFor(before, change.name)]) {
+      const key = JSON.stringify(entry);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      judgments.push(entry);
+    }
+    return {
+      id: change.name,
+      change: change.change,
+      beforeExpected: expectedToolOf(before, change.name),
+      afterExpected: expectedToolOf(after, change.name),
+      judgments
+    };
+  });
+}
+
+function expectedToolOf(report, id) {
+  for (const model of report.models ?? []) {
+    const row = (model.rows ?? []).find((entry) => entry.id === id);
+    if (row) return row.expectedTool ?? null;
+  }
+  return null;
 }
 
 function compareProfiles(before, after) {
@@ -302,16 +359,27 @@ export function regressionGate(comparison, summaries = []) {
     };
   }
 
+  if (comparison.environment?.comparable === false) {
+    return {
+      status: "skip",
+      message: `${comparison.environment.reason ?? "环境不一致"}，无法判定回归（门禁跳过）`
+    };
+  }
+
   const comparable = comparison.models.filter((model) => model.comparable && model.reviewed > 0);
   if (comparable.length === 0) {
     return { status: "skip", message: "定义或用例已变更，无法判定回归（门禁跳过）" };
   }
 
+  const warnings = comparable.flatMap((model) =>
+    (model.unstableFlips ?? []).map((item) => `${model.model}/${item.id}`)
+  );
   return {
     status: "ok",
     regressions: comparable.flatMap((model) =>
       model.regressions.map((item) => `${model.model}/${item.id}`)
-    )
+    ),
+    ...(warnings.length > 0 ? { warnings } : {})
   };
 }
 
@@ -330,6 +398,23 @@ export function formatCompare(report) {
   for (const change of report.caseChanges) {
     lines.push(`  case ${change.change}: ${change.name}`);
   }
+  for (const change of report.judgmentChanges ?? []) {
+    lines.push(
+      `  judgment ${change.change}: ${change.id} ${change.beforeExpected ?? "(none)"} → ${change.afterExpected ?? "(none)"}`
+    );
+    for (const entry of change.judgments) {
+      lines.push(
+        `    ${String(entry.changedAt).slice(0, 10)} ${entry.reason}${entry.evidencePointer ? ` [${entry.evidencePointer}]` : ""}`
+      );
+    }
+  }
+  if (report.environment) {
+    for (const warning of report.environment.warnings ?? []) {
+      lines.push(`warn: ${warning}`);
+    }
+    const environmentLine = formatEnvironmentDifferences(report.environment);
+    if (environmentLine) lines.push(environmentLine);
+  }
 
   for (const model of report.models) {
     lines.push("");
@@ -337,13 +422,22 @@ export function formatCompare(report) {
       lines.push(`[${model.model}] ${model.reason}`);
       continue;
     }
-    lines.push(`[${model.model}] ${model.comparable ? "可比较" : "不可直接比较（工具定义或用例已变更）"}`);
+    const incomparableReason = model.reason ?? "工具定义或用例已变更";
+    lines.push(
+      `[${model.model}] ${model.comparable ? "可比较" : `不可直接比较（${incomparableReason}）`}`
+    );
     lines.push(`  共同且未变更用例: ${model.commonCases}（已复核 ${model.reviewed}）`);
     if (model.excluded > 0) {
       lines.push(`  排除出回归判定: ${model.excluded} 条（excludeFromBase）`);
     }
     lines.push(`  选择准确率: ${percent(model.metrics.selection.before)} → ${percent(model.metrics.selection.after)}`);
     lines.push(`  通过率:     ${percent(model.metrics.pass.before)} → ${percent(model.metrics.pass.after)}`);
+    if (model.unstableFlips?.length) {
+      lines.push(
+        `  不稳定用例翻转（不计入回归门禁）: ${model.unstableFlips.map((item) => item.id).join(", ")}`
+      );
+    }
+    if (model.stats) lines.push(`  ${formatStatsLine(model.stats)}`);
     if (model.buckets?.multiStep || model.buckets?.ambiguous) {
       const parts = [];
       const single = model.buckets.singleIntent;
@@ -492,6 +586,78 @@ function recordPersistent(map, row, side, id, unstableIds) {
   entry.cases.set(id, (entry.cases.get(id) ?? false) || unstableIds.has(id));
   entry.sides.add(side);
   map.set(key, entry);
+}
+
+function pairedSelectionStats(beforeCorrectAfterWrong, beforeWrongAfterCorrect) {
+  const discordant = beforeCorrectAfterWrong + beforeWrongAfterCorrect;
+  return {
+    beforeCorrectAfterWrong,
+    beforeWrongAfterCorrect,
+    discordant,
+    pValue: mcnemarExactP(beforeCorrectAfterWrong, beforeWrongAfterCorrect),
+    requiredSameDirection: requiredSameDirection(discordant)
+  };
+}
+
+function independentMde(n) {
+  // Worst case p=.5; alpha=.05 two-sided, power=.80, equal groups.
+  const zAlpha = 1.959963984540054;
+  const zBeta = 0.8416212335729143;
+  return {
+    n,
+    alpha: 0.05,
+    power: 0.8,
+    delta: (zAlpha + zBeta) * Math.sqrt(0.5 / n)
+  };
+}
+
+// Two-sided exact McNemar: only discordant pairs carry information.
+function mcnemarExactP(b, c) {
+  const n = b + c;
+  if (n === 0) return 1;
+  const k = Math.min(b, c);
+  let term = 2 ** -n;
+  let sum = term;
+  for (let i = 1; i <= k; i += 1) {
+    term *= (n - i + 1) / i;
+    sum += term;
+  }
+  return Math.min(1, 2 * sum);
+}
+
+// Minimum one-way flips (no opposite flips) that the exact two-sided test
+// calls significant. With 18 reviewed cases this is 6, matching the agreed
+// reporting threshold.
+function requiredSameDirection(n) {
+  if (n === 0) return null;
+  for (let k = 0; k <= n; k += 1) {
+    if (mcnemarExactP(k, 0) < 0.05) return k;
+  }
+  return null;
+}
+
+function formatStatsLine(stats) {
+  const paired = stats.pairedSelection;
+  const pText = paired.discordant === 0 || paired.pValue === 1
+    ? "n/a"
+    : paired.pValue < 0.001
+      ? "<0.001"
+      : paired.pValue.toFixed(3);
+  const requirement =
+    paired.discordant === 0
+      ? "无配对翻转"
+      : paired.requiredSameDirection === null
+        ? "当前用例数下无法达 p<.05"
+        : `需 ≥${paired.requiredSameDirection} 例同向翻转（无反向）才达 p<.05`;
+  const mde =
+    stats.independentMde.delta >= 1
+      ? ">100pp（n 过小，无法检出实际差异）"
+      : `${Math.round(stats.independentMde.delta * 100)}pp（n=${stats.independentMde.n}）`;
+  return (
+    `统计: 配对选择翻转 ${paired.beforeCorrectAfterWrong}（成功→失败）/ ` +
+    `${paired.beforeWrongAfterCorrect}（失败→成功），n=${paired.discordant}，` +
+    `McNemar 精确 p=${pText}；${requirement}；独立两样本 80% 功效 MDE ≈ ${mde}`
+  );
 }
 
 function ratio(numerator, denominator) {

@@ -3,6 +3,58 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.10.1 — 2026-11-15
+
+- The 0.10.0 tarball shipped the `calibrate` npm script but omitted
+  `scripts/calibrate.js`, so `npm run calibrate -- <calibration.json>` failed
+  with MODULE_NOT_FOUND on installed copies. The script is now part of the
+  published files, and the release checklist requires confirming it in
+  `npm pack --dry-run`.
+
+## 0.10.0 — 2026-11-14
+
+- Scorecards now embed an `environment` block: `mfVersion`, `node`, `os`,
+  `generatedAt`, `modelsFileHash` (sha256 of the registry bytes actually
+  loaded, including the built-in registry), `sampling` (`repeat` / `retries` /
+  `minIntervalMs`) and `unknown[]`. Fields that cannot be captured are listed
+  in `unknown` instead of guessed.
+- `mf compare` refuses to compare scorecards whose known environment fields
+  differ (exit 1, differences named in the output). `--cross-env` explicitly
+  forces the comparison and labels it. Scorecards without an environment block
+  (0.9.1 and older) remain comparable with a warning; fields declared in
+  `unknown[]` are excluded from the consistency check and listed.
+- `regressionGate` skips with an environment-specific message when the
+  environments differ, instead of reporting a false regression or a silent ok.
+- `mf compare` now validates its flags: unknown options print one warning line
+  to stderr and are ignored, instead of being silently dropped by the inline
+  argument filter. Exit codes are unchanged.
+- Every comparable model comparison now reports `stats`: paired selection
+  flips with an exact McNemar p-value (`b+c` discordant pairs; six one-way
+  flips with no reverse flips is the p<.05 threshold) and the independent
+  two-sample MDE for the current reviewed count (worst case p=.5, alpha=.05,
+  power=.8; about 51pp at n=15 and 47pp at n=18). Stats are omitted when the
+  definitions or environments are not comparable.
+- New `mf replay <scorecard.json...> --suite <suite.json>` restates historical
+  scorecards under the current expectations: selection accuracy before/after,
+  per-case changes (old/new expected tool and bucket), and multiStep legal
+  first steps. Args and pass are not recomputed because historical scorecards
+  do not store actual arguments; the limitation is printed. Supports `--json`
+  and `--out`.
+- `npm run calibrate -- <calibration.json>` runs every lint rule's positive
+  anchor and over-reporting guard (target-rule-only) and exits non-zero on any
+  failure. `docs/release-checklist.md` makes it a mandatory release gate and
+  requires append-only `generatedAgainst` / `verifiedAgainst` history.
+- Suite cases accept an optional append-only `judgments[]` history
+  (`from` / `to` / `changedAt` / `reason` / `evidencePointer`). Scorecards
+  snapshot it as `suite.judgments[]`, and `mf compare` prints
+  `judgmentChanges[]` when a case expectation moves: the before/after expected
+  tool plus every recorded judgment and its evidence pointer.
+- Flips of cases listed in `stability.unstable` on either side become
+  `unstableFlips` warnings instead of regressions. They still count toward the
+  metrics but no longer make `--fail-on-regression` exit 2; the gate lists
+  them as warnings. This stops known high-entropy cases from repeatedly
+  interrupting unattended nightly runs.
+
 ## 0.9.1 — 2026-11-13
 
 - `mf eval` / `mf ablate` no longer fall back to the mock adapter when no

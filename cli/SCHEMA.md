@@ -56,7 +56,16 @@
   "tags": [],
   "bucket": "singleIntent",
   "acceptableFirstCalls": ["convert_pdf", "file_read"],
-  "bucketReason": "先读取文档再转换是合法首步"
+  "bucketReason": "先读取文档再转换是合法首步",
+  "judgments": [
+    {
+      "from": null,
+      "to": "convert_pdf",
+      "changedAt": "2026-11-10T00:00:00.000Z",
+      "reason": "首次人工复核",
+      "evidencePointer": "feedback-1103#t03"
+    }
+  ]
 }
 ```
 
@@ -65,6 +74,7 @@
 - `acceptableFirstCalls`: 可选、非空、必须包含 `expectedTool`，每个名字都必须在工具列表里；缺省等价于 `[expectedTool]`。只影响 `multiStep` / `ambiguous` 的首轮判定，`singleIntent` 仍按 `expectedTool` 精确匹配。
 - `bucketReason`: 可选一句话理由，供文档与评审使用，不参与评分和指纹。
 - `expectedTrajectory`: 预留字段，0.8 不实现语义。
+- **判定谱系（0.10.0 起）**：`judgments[]` 是可选的追加式记录，每项 `{from, to, changedAt, reason, evidencePointer?}`：`from` / `to` 是工具名或 null，`changedAt` 为 ISO 8601，`reason` 必填，`evidencePointer` 指向依据（issue、反馈轮次、评分卡行等）。只追加、不改写历史；不参与评分与指纹。评分卡会把用例的判定历史平铺到 `suite.judgments[]`（每项带 `caseId`），供 `mf compare` 在用例变更时并列打印期望变化与依据。
 - 首轮评分：`multiStep` / `ambiguous` 的 `actual ∈ acceptableFirstCalls` 记为**合法首步**，不计误选；未命中单独统计（`firstCallMisses`），不进入主指标。完整验收仍需轨迹评分（0.8 不做）。
 - `expectedArgs` 仅在有 `expectedTool` 时可用；值为断言，支持字面量、`$contains`、`$oneOf`、`$exists`。
 - `toolInput` + `expect` 用于 `--execute`：`expect` 支持 `ok`、`contains`、`equals`、`errorType`、`maxDurationMs`、`maxPeakRssMB`。
@@ -99,6 +109,15 @@ skills 只做静态检查，不参与模型评测。
     "tools": ["..."], "cases": 12,
     "fingerprint": "sha256:...",
     "execution": { "runtime": "node", "engine": "node-permission", "entry": "index.mjs", "hash": "..." }
+  },
+  "environment": {
+    "mfVersion": "0.10.0",
+    "node": "v24.6.0",
+    "os": "darwin-arm64",
+    "generatedAt": "2026-11-14T09:00:00.000Z",
+    "modelsFileHash": "sha256:…",
+    "sampling": { "repeat": 1, "retries": 2, "minIntervalMs": 0 },
+    "unknown": []
   },
   "models": [ { "model": "dsv4-flash", "total": 12, "reviewedTotal": 12, "excludedTotal": 0,
                "selectionAccuracy": 0.83, "selectionAccuracySingleIntent": 0.9,
@@ -144,7 +163,10 @@ skills 只做静态检查，不参与模型评测。
 - `inputTokens` / `cachedTokens` / `outputTokens` / `totalTokens` 是客观计量（`totalTokens = inputTokens + outputTokens`，缓存 token 已含在输入内）。成本需要模型注册表的 `pricing`；`currency` 取模型注册表条目（CNY/USD，默认 CNY）。读 `totalCost` / `avgCost` 时一并读 `costCurrency`；`totalCostCny` / `avgCostCny` 只在 CNY 时出现，是兼容别名。
 - `--profile` 时每个组含 `profile`、`mounted`、`allInOne`、`delta`、`lifted`、`jammed`、`errors`，以及 `usage`（`inputTokens` / `cachedTokens` / `outputTokens` / `totalTokens` / `cost` / `costCurrency`；CNY 时另带 `costCny`）；错误行不参与挂载对比（不会被记成 jammed），每个组的 `reviewed` 是可评分行数。
 - `fingerprint` 由工具与用例内容计算；`mf compare` 用它判断两份报告是否可比。
+- **环境溯源（0.10.0 起）**：评分卡顶层 `environment` 块记录生成条件——`mfVersion`、`node`、`os`（`platform-arch`）、`generatedAt`（ISO 8601）、`modelsFileHash`（实际加载的 registry 文件字节的 sha256；未传 `--models-file` 时是内置 registry）、`sampling`（`repeat` / `retries` / `minIntervalMs`）与 `unknown[]`。生成时捕获不到的字段显式列入 `unknown`，不写空值、不编造。`mf compare` 默认比较除 `generatedAt` 与 `unknown` 外的已知字段：不一致时判定不可比较（退出码 1，原因点名字段），`--cross-env` 显式放行并输出“跨环境比较（强制）”。缺失 `environment` 块的旧评分卡按 unknown 兼容：可比较、输出 warn；字段被显式列入 `unknown[]` 时该字段不参与一致性判定，输出列出。环境不一致时 `regressionGate` 返回 skip（点名环境），不误报回归也不静默 ok；使用 `--cross-env` 时按正常回归判定。`mf compare` 对未知 flag 向 stderr 打一行 warn，退出码语义不变。
 - `mf compare` 与 `--fail-on-regression` 会跳过任一报告中标了 `excludeFromBase` 的行；对比结果里的 `excluded` 给出跳过的行数。这些行既不参与回归判定，也不进入对比指标。
+- **判定增量（0.10.0 起）**：用例指纹不一致时，compare 的 `judgmentChanges[]` 为每个变化的用例给出 `id`、`change`（`added` / `removed` / `changed`）、`beforeExpected` / `afterExpected`（来自两侧评分卡行）与合并去重后的 `judgments[]`；人读输出打印 `judgment changed: <id> <before> → <after>` 及每条判定记录。指纹一致时该字段为空数组。
+- **统计护栏与不稳定翻转（0.10.0 起）**：可比模型的对比结果带 `stats`——`pairedSelection`（`beforeCorrectAfterWrong` / `beforeWrongAfterCorrect` / `discordant` / `pValue`（McNemar 精确检验）/ `requiredSameDirection`）与 `independentMde`（`n` / `alpha` / `power` / `delta`，最坏 p=.5 的独立两样本 MDE）。分析单位为已复核、未排除的用例（`--repeat` 取多数决）。只有 `b+c` 个翻转对参与检验；单向翻转 6 例（无反向）是 p<.05 的门槛。`--repeat` 采集过 `stability` 的用例若翻转，进入 `unstableFlips[]`（字段同 `regressions[]`）而不是 `regressions[]`：它们仍计入指标，但不触发 `--fail-on-regression` 的 exit 2；人读输出与 gate warnings 会列出。环境不一致时 `stats` 为 null（不混算）。
 - `mf compare` 的每个模型结果带 `persistentInterference[]`：把两份报告中「期望工具 → 实际误选工具」相同的行按对聚合；`occurrences ≥ 3` 且覆盖 `cases ≥ 2` 时列入，字段为 `bucket` / `expected` / `stolenBy` / `occurrences` / `runs`（出现在几份报告）/ `cases` / `stable`（稳定错选用例数）/ `drifting`（`--repeat` 下高熵漂移用例数）。**合法首步不是误选**：multiStep/ambiguous 行只要首轮落在 `acceptableFirstCalls`，就不进入持续干扰、工具间干扰与误选分布；同一对工具在不同桶里分行列出，不跨桶合并。旧评分卡没有桶字段时按 `singleIntent` 处理。模型级 `stabilityCaptured` 表示两份报告是否都采集了 `--repeat` 元数据；为 `false` 时 `stable` 只表示“未观测到漂移”，文本输出会显式提示。模型级 `buckets` 按桶给出 `reviewed`、`selection`（前/后）、`legalFirstStep`（前/后）与 `firstCallMisses`（前/后）。
 
 ## 3. 扫描输出（`mf scan`）
@@ -274,7 +296,7 @@ const result = checkMany({ manifests: [/* ... */], installed: [/* ... */] });
 | 码 | 含义 |
 | --- | --- |
 | 0 | 成功（`mf check` 的 warn 也是 0） |
-| 1 | 输入/用法错误；`mf compare` 判定不可直接比较 |
+| 1 | 输入/用法错误；`mf compare` 判定不可直接比较（工具/用例/执行入口变更，或环境不一致且未加 `--cross-env`） |
 | 2 | `mf eval --fail-under` 未达标、`--fail-on-regression` 发现回退或无法判定（基线模型缺失、本轮全部调用失败）、`--max-cost` / `--max-tokens` 超限；`mf compare --fail-on-regression` 发现回归 |
 | 3 | `mf exec` 被权限策略拒绝；`mf scan --json` 未找到工具或 skill |
 | 4 | `mf exec` 超时 |
@@ -387,3 +409,35 @@ const result = checkMany({ manifests: [/* ... */], installed: [/* ... */] });
 ```
 
 `profiles` 为 `null` 表示套件未定义分组。`clusters`/`coverage` 的明细与 §5/§4 同源；`actions` 是给人看的优先级列表。`mf audit` 恒退出 0（advisory），不阻断流程；负例占比告警只按整 suite 计算，分组表里的 `negativeRatio` 是该组「正例 + 负例」内的比例，仅供参考。
+
+## 11. replay 输出（`mf replay --json`，0.10.0 起）
+
+```json
+{
+  "suite": "当前套件名",
+  "models": [
+    {
+      "model": "dsv4-flash",
+      "reviewed": 18,
+      "missing": 2,
+      "selection": { "before": 0.72, "after": 0.83 },
+      "changed": [
+        {
+          "id": "t03",
+          "actualTool": "file_read",
+          "oldExpectedTool": "create_report",
+          "newExpectedTool": "file_read",
+          "oldBucket": "singleIntent",
+          "newBucket": "multiStep",
+          "oldSelectionCorrect": false,
+          "newSelectionCorrect": true,
+          "newLegalFirstStep": true
+        }
+      ]
+    }
+  ],
+  "limitations": ["args/pass 无法重算：历史评分卡只保存参数匹配结果，不保存实际参数"]
+}
+```
+
+`mf replay <scorecard.json...> --suite <suite.json> [--json] [--out <file>]` 按当前套件的 `expectedTool`、`bucket`、`acceptableFirstCalls` 重算历史评分卡的选择与合法首步。只统计已复核且未被 `excludeFromBase` 排除的行；当前套件中不存在的用例计入 `missing`；参数与 pass 无法重算，固定写入 `limitations`。多份评分卡时 JSON 为 `{ "reports": [...] }`。退出码 0（用法/读取错误为 1）。

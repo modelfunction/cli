@@ -5,7 +5,7 @@
 ## 安装
 
 ```bash
-npx -y modelfunction-cli@0.9.1 --version
+npx -y modelfunction-cli@0.10.1 --version
 # 或
 npm i -D modelfunction-cli
 npx mf --version
@@ -86,7 +86,8 @@ INTERNAL_LLM_KEY=... mf eval --suite mf.suite.json \
 | `mf audit` | 一次静态审计：lint + 混淆族边界 + 用例覆盖 + 挂载检查，输出可转发的 Markdown/JSON；不调用模型 |
 | `mf lint` | 静态检查工具描述与参数 schema，以及 skills 的 name/description（不调用模型）；0.6.1 起含「可选参数祈使句」与「悬空工具名引用」两条 info 规则；重复规则自动合并成一条；有 `profiles` 时给出「这些组不要合并挂载」 |
 | `mf check` | 安装门禁：一个或一包新能力 × 已装能力（`--manifest` / `--manifests` + `--installed`），纯静态、返回 pass/warn、不阻断；门禁语境只对混淆对/必填来源/结构性错误报 warn，其余降 info；也可 `import { check, checkMany } from "modelfunction-cli"` |
-| `mf compare` | 跨版本比较、干扰归因、混淆矩阵；两份报告都有分组时按组对比；`--fail-on-regression` 发现回归退出 2；`excludeFromBase` 行不参与回归判定；同一对工具在 ≥3 次且 ≥2 条用例上重复时给出「持续干扰」聚合（区分稳定错选与高熵漂移） |
+| `mf compare` | 跨版本比较、干扰归因、混淆矩阵；两份报告都有分组时按组对比；`--fail-on-regression` 发现回归退出 2；`excludeFromBase` 行不参与回归判定；同一对工具在 ≥3 次且 ≥2 条用例上重复时给出「持续干扰」聚合（区分稳定错选与高熵漂移）；0.10 起比较环境块（`modelsFileHash` / node / os / sampling），不一致默认拒绝，`--cross-env` 显式放行；输出配对翻转 McNemar 精确检验与独立 MDE；已知不稳定用例的翻转降级为 warning，不触发门禁 |
+| `mf replay` | 按当前套件的期望（`expectedTool` / 桶 / `acceptableFirstCalls`）重述历史评分卡：选择准确率前后对比、改判用例清单；参数与 pass 无法重算并明确标注 |
 | `mf ablate` | 留一法：去掉某个工具再跑一遍，量化它是否干扰其他工具；`--profile` 限定在某个挂载组内 |
 | `mf cluster` | 聚类工具，建议挂载分组；参数形状拆散的同一族（如 `sessions_*`）列为「同族候选」；并输出「族内边界清单」（每族会互抢的对 + 每个工具可用的区分词）；`--out` 把分组写成套件的 `profiles` |
 | `mf exec` | 单工具执行 + 指标（Node / Python），支持 `--allow-read/write/net`、超时、sideEffects 准入 |
@@ -106,6 +107,15 @@ mf eval --models dsv4-flash --repeat 3    # 每条跑 3 次取多数，并列出
 ```
 
 `--repeat` 会让调用次数和成本乘以 n；正式基线建议 3 次，日常回归 1 次够用。
+
+## 比较时的统计护栏
+
+`mf compare` 对每份可比报告输出两行统计：
+
+- **配对翻转**：同一用例从选中变未选中（或反向）的条数，附 McNemar 精确检验 p 值。只有翻转对携带信息；单向翻转要达到 6 例（且无反向）才到 p<.05，18 条用例的套件正好覆盖这个门槛。
+- **独立设计 MDE**：按当前可复核用例数估算的独立两样本最小可检出差异（α=.05，80% 功效，最坏 p=.5）。n=15 时约 51pp，n=18 时约 47pp——小于这个幅度的差异不要当结论。
+
+夜间门禁要注意多重比较：单晚用 α=.05，连续 30 晚至少出现一次假阳性的概率约为 1−(0.95)^30≈79%。因此 `--fail-on-regression` 只应作为「需要人工复核」的触发器，判定真实回归时看配对方向、连续多晚的一致性与已知不稳定集合。`--repeat` 采集过 stability 的用例若发生翻转，compare 标为 warning 而不是 regression，不触发门禁。
 
 ## 挂载分组：验证"少挂一点"值不值
 
@@ -130,7 +140,7 @@ mf eval --suite mf.suite.json --models internal-ds \
   "mcpServers": {
     "modelfunction": {
       "command": "npx",
-      "args": ["-y", "modelfunction-cli@0.9.1", "mcp"]
+      "args": ["-y", "modelfunction-cli@0.10.1", "mcp"]
     }
   }
 }
@@ -142,7 +152,7 @@ mf eval --suite mf.suite.json --models internal-ds \
 
 对外 JSON 字段、`check()` 返回结构、MCP 参数与退出码见 [SCHEMA.md](SCHEMA.md)，自 0.4.3 起冻结为 v1：v1 内只做加法，重命名或删除字段需 major 并提前两个 minor 或 90 天弃用。`check()` 的类型声明随包发布。
 
-`0.9.1` 已发布到 npm（latest）：未显式 `--models` 且无可用密钥时，`mf eval` / `mf ablate` 改为报错退出 1，不再回落 mock（无 Key 的演示请显式 `--models mock`）。`0.9.0` 已发布到 npm：`desc-or-contradiction` 补上祈使否定与自足声明两类措辞（0.8.0 只认 "call this tool directly"，漏掉了自己的锚点家族）；singleIntent 主指标拆出正例选择率与负例克制率（`selectionAccuracySingleIntentPositives` / `abstentionRateSingleIntent`，混合口径保留并在 SCHEMA 披露）；多步桶的传输错误行单列 `firstCallErrors` 并给出 `legalFirstStepRateExcludingErrors`；人读报告 select 列改用 canonical 指标。`0.8.0` 已发布到 npm：三桶 case schema（`singleIntent` / `multiStep` / `ambiguous` + `acceptableFirstCalls`），multiStep/ambiguous 的首轮合法首步不再计误选，对外主指标限定 singleIntent；评分卡持久化桶标签，`mf compare` 按桶拆分持续干扰且不跨桶合并；新增 `desc-or-contradiction` lint、`stabilityCaptured`，模型 Key 支持 `MODEL_API_KEY` 中性兜底。`0.7.0` 已发布到 npm：`mf compare` 新增持续干扰聚合（同一「期望 → 误选」对 ≥3 次且 ≥2 条用例，区分稳定错选与高熵漂移）；新增 `pair-family-sibling` 同族规则；`mf scan` 把模板字符串/未解析常量描述标为 `runtime`，并支持 Python Google 风格 docstring `Args:` 参数描述。`0.6.2` 已发布到 npm：修复 `param-optional-imperative` 的名词短语/工具动作误报与多出现漏报；`mf compare` 遵守 `excludeFromBase`（对比结果带 `excluded`），新增 `mf compare --fail-on-regression`。`0.6.1` 已发布到 npm：新增 `param-optional-imperative` 与 `desc-dangling-tool` 两条 info lint，并把「具名否定 / 泛化否定 / 可选参数祈使句 / 改名引用 / 话术范围」写进 `skills/mf-cases/SKILL.md`。`0.6.0` 已发布到 npm（latest）：token 成为主口径（评分卡新增 `totalTokens`），模型注册表支持 `currency`（CNY/USD，默认 CNY），成本字段改为 `totalCost` / `avgCost` + `costCurrency`（`totalCostCny` / `avgCostCny` 仅在 CNY 时保留），新增 `mf eval --max-tokens <n>` 与 MCP `maxTokens`；`--fail-on-regression` 在基线模型缺失或本轮全部调用失败时改为 exit 2（无法判定 ≠ 无回归），自动选模型时在 stderr 打 note；本地门禁模板改用退出码判定、只在成功 eval 后更新 state，`.cmd` 固定 CRLF。`0.5.5` 含 eval `--retry <n>` / `--min-interval <ms>`、评分卡 `retries`、CI 模板 static 层 `cluster --json`、`templates/local/` 与 `docs/local-gate.md`（内网/非 GitHub 环境的 pre-push 静态门禁、变更门、定时回归）。`0.5.4` 含用例级 `excludeFromBase` / `excludeFromProfiles`、评分卡 `errorKind` / `errorsByKind` / `scoredTotal` / `selectionAccuracyExcludingErrors`、挂载对比错误不计 jammed、audit 分组 `neg%` 与分组 token 用量聚合。`0.5.3` 及更早的能力见下：凭证与本地反馈、usage `ci` 标记、eval `--progress`/`--max-cost`、`mf audit`、`scan --probe` streamable HTTP、MCP 静态工具 `lint`/`check`/`cluster`/`compare`、`checkMany` 一包批量检查、门禁严重度收敛、静态规则性能（真实 100 能力清单 `checkMany` 471ms→40ms）、`installed` 形状校验与 `profiles` 平台形态兼容。示例统一使用 `@0.9.0`。
+`0.10.1` 已发布到 npm（latest）：发布包补带 `scripts/calibrate.js`，安装版也能执行 `npm run calibrate -- <calibration.json>`。`0.10.0` 已发布：评分卡新增 `environment` 环境溯源块，`mf compare` 环境不一致时拒绝比较（`--cross-env` 显式放行）；对比输出 `stats`（McNemar 精确检验 + 独立两样本 MDE），已知不稳定用例的翻转降为 warning；用例支持追加式 `judgments[]` 判定谱系；新增 `mf replay`；`npm run calibrate` 成为强制发布门。`0.9.1` 已发布到 npm：未显式 `--models` 且无可用密钥时，`mf eval` / `mf ablate` 改为报错退出 1，不再回落 mock（无 Key 的演示请显式 `--models mock`）。`0.9.0` 已发布到 npm：`desc-or-contradiction` 补上祈使否定与自足声明两类措辞（0.8.0 只认 "call this tool directly"，漏掉了自己的锚点家族）；singleIntent 主指标拆出正例选择率与负例克制率（`selectionAccuracySingleIntentPositives` / `abstentionRateSingleIntent`，混合口径保留并在 SCHEMA 披露）；多步桶的传输错误行单列 `firstCallErrors` 并给出 `legalFirstStepRateExcludingErrors`；人读报告 select 列改用 canonical 指标。`0.8.0` 已发布到 npm：三桶 case schema（`singleIntent` / `multiStep` / `ambiguous` + `acceptableFirstCalls`），multiStep/ambiguous 的首轮合法首步不再计误选，对外主指标限定 singleIntent；评分卡持久化桶标签，`mf compare` 按桶拆分持续干扰且不跨桶合并；新增 `desc-or-contradiction` lint、`stabilityCaptured`，模型 Key 支持 `MODEL_API_KEY` 中性兜底。`0.7.0` 已发布到 npm：`mf compare` 新增持续干扰聚合（同一「期望 → 误选」对 ≥3 次且 ≥2 条用例，区分稳定错选与高熵漂移）；新增 `pair-family-sibling` 同族规则；`mf scan` 把模板字符串/未解析常量描述标为 `runtime`，并支持 Python Google 风格 docstring `Args:` 参数描述。`0.6.2` 已发布到 npm：修复 `param-optional-imperative` 的名词短语/工具动作误报与多出现漏报；`mf compare` 遵守 `excludeFromBase`（对比结果带 `excluded`），新增 `mf compare --fail-on-regression`。`0.6.1` 已发布到 npm：新增 `param-optional-imperative` 与 `desc-dangling-tool` 两条 info lint，并把「具名否定 / 泛化否定 / 可选参数祈使句 / 改名引用 / 话术范围」写进 `skills/mf-cases/SKILL.md`。`0.6.0` 已发布到 npm（latest）：token 成为主口径（评分卡新增 `totalTokens`），模型注册表支持 `currency`（CNY/USD，默认 CNY），成本字段改为 `totalCost` / `avgCost` + `costCurrency`（`totalCostCny` / `avgCostCny` 仅在 CNY 时保留），新增 `mf eval --max-tokens <n>` 与 MCP `maxTokens`；`--fail-on-regression` 在基线模型缺失或本轮全部调用失败时改为 exit 2（无法判定 ≠ 无回归），自动选模型时在 stderr 打 note；本地门禁模板改用退出码判定、只在成功 eval 后更新 state，`.cmd` 固定 CRLF。`0.5.5` 含 eval `--retry <n>` / `--min-interval <ms>`、评分卡 `retries`、CI 模板 static 层 `cluster --json`、`templates/local/` 与 `docs/local-gate.md`（内网/非 GitHub 环境的 pre-push 静态门禁、变更门、定时回归）。`0.5.4` 含用例级 `excludeFromBase` / `excludeFromProfiles`、评分卡 `errorKind` / `errorsByKind` / `scoredTotal` / `selectionAccuracyExcludingErrors`、挂载对比错误不计 jammed、audit 分组 `neg%` 与分组 token 用量聚合。`0.5.3` 及更早的能力见下：凭证与本地反馈、usage `ci` 标记、eval `--progress`/`--max-cost`、`mf audit`、`scan --probe` streamable HTTP、MCP 静态工具 `lint`/`check`/`cluster`/`compare`、`checkMany` 一包批量检查、门禁严重度收敛、静态规则性能（真实 100 能力清单 `checkMany` 471ms→40ms）、`installed` 形状校验与 `profiles` 平台形态兼容。示例统一使用 `@0.10.1`。
 
 ## 数据边界
 
@@ -171,7 +181,7 @@ mf feedback --out out.json  # 导出脱敏反馈包（聚合值，不含原始�
 
 ```bash
 # 1. 把 mf 挂成 MCP server
-claude mcp add modelfunction -- npx -y modelfunction-cli@0.9.1 mcp
+claude mcp add modelfunction -- npx -y modelfunction-cli@0.10.1 mcp
 ```
 
 ```text

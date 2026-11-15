@@ -17,6 +17,8 @@ import { suiteFingerprint, hashText, hashOf } from "./lib/fingerprint.js";
 import { runExecutionChecks } from "./lib/eval-exec.js";
 import { checkSandbox, formatSandboxReport } from "./lib/sandbox-check.js";
 import { compareScorecards, formatCompare, regressionGate } from "./lib/compare.js";
+import { buildEnvironment } from "./lib/environment.js";
+import { replayScorecard, formatReplay } from "./lib/replay.js";
 import { analyzeAblation, formatAblation } from "./lib/ablate.js";
 import { clusterTools, formatClusters } from "./lib/cluster.js";
 import {
@@ -76,7 +78,8 @@ Usage:
   mf audit [--suite <file>] [--out <file>] [--json]  # 静态审计：lint + 分组边界 + 用例覆盖 + 挂载
   mf lint [--suite <file>] [--json]  # 静态检查 tools 与 skills，不调用模型
   mf check (--manifest <file> | --manifests <file>) [--installed <file>] [--json]  # 安装门禁：新能力 × 已装能力（--manifests 支持一包）
-  mf compare <before.json> <after.json> [--fail-on-regression] [--json]
+  mf compare <before.json> <after.json> [--fail-on-regression] [--cross-env] [--json]
+  mf replay <scorecard.json...> --suite <suite.json> [--json] [--out <file>]
   mf ablate --tool <name> [--suite <file>] [--profile <group>] [--models <ids>] [--max-cost <amount>] [--max-tokens <n>] [--progress] [--json]
   mf cluster [--suite <file>] [--threshold <0.5>] [--max-size <10>] [--out <file>] [--json]  # 建议挂载分组 + 同族候选
   mf exec --entry <file> (--input <json> | --input-json <json>) [--runtime node|python] [--python <cmd>] [--export run] [--allow-read <paths>] [--allow-write <paths>] [--allow-net <hosts>] [--timeout <ms>] [--warmup <n>] [--json]
@@ -107,6 +110,7 @@ Eval options:
   --fail-under <ratio>  exit 2 if any model's selection accuracy is below ratio (e.g. 0.8)
   --baseline <file>     previous scorecard JSON (used with --fail-on-regression)
   --fail-on-regression  exit 2 if any reviewed case regressed vs --baseline
+  --cross-env           compare: allow environment mismatches (forced cross-environment comparison)
   --execute             run toolInput and assert expect (needs --entry or suite.execution.entry)
   --exec-timeout <ms>   per execution timeout (suite.execution.timeoutMs or 10000)
   --allow-side-effects  allow executing tools declaring write/external/unknown sideEffects
@@ -142,6 +146,15 @@ export async function runEval(options, io = console) {
   const { registry, adapters } = await resolveModels(options.models, options.modelsFile, io, {
     retries: options.retries,
     minIntervalMs: options.minIntervalMs
+  });
+  const environment = await buildEnvironment({
+    modelsFile: resolve(options.modelsFile ?? DEFAULT_MODELS),
+    version: await readVersion(),
+    sampling: {
+      repeat: options.repeat ?? 1,
+      retries: options.retries ?? 2,
+      minIntervalMs: options.minIntervalMs ?? 0
+    }
   });
   const tools = toModelTools(suite.tools);
 
@@ -231,13 +244,13 @@ export async function runEval(options, io = console) {
     const payload = markdown
       ? formatMarkdown(suite, cases, summaries) +
         (profileReport ? `\n\n${formatProfileMarkdown(profileReport)}` : "")
-      : JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport), null, 2);
+      : JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport, environment), null, 2);
     await writeFileAtomic(target, payload);
     io.log(`wrote ${target}`);
   }
 
   if (options.json) {
-    io.log(JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport), null, 2));
+    io.log(JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport, environment), null, 2));
   } else {
     io.log(`suite: ${suite.name} — ${cases.length} cases, ${suite.tools.length} tools`);
     io.log(`file:  ${suite.path}`);
@@ -311,7 +324,10 @@ export async function runEval(options, io = console) {
       return 2;
     }
     const baseline = JSON.parse(await readFile(resolve(options.baseline), "utf8"));
-    const comparison = compareScorecards(baseline, serialize(suite, cases, summaries, executionInfo));
+    const comparison = compareScorecards(
+      baseline,
+      serialize(suite, cases, summaries, executionInfo, null, environment)
+    );
     if (!options.json) {
       io.log("");
       io.log(formatCompare(comparison));
@@ -325,6 +341,9 @@ export async function runEval(options, io = console) {
       io.error(gate.message);
     } else {
       regressions = gate.regressions;
+      if (gate.warnings?.length) {
+        io.error(`不稳定用例翻转（不计入回归门禁）: ${gate.warnings.join(", ")}`);
+      }
       if (regressions.length > 0) io.error(`regressions: ${regressions.join(", ")}`);
     }
   }
@@ -664,7 +683,7 @@ export async function runCompare(options, io = console) {
   const [beforePath, afterPath] = options.paths;
   const before = JSON.parse(await readFile(resolve(beforePath), "utf8"));
   const after = JSON.parse(await readFile(resolve(afterPath), "utf8"));
-  const report = compareScorecards(before, after);
+  const report = compareScorecards(before, after, { crossEnv: options.crossEnv === true });
   io.log(options.json ? JSON.stringify(report, null, 2) : formatCompare(report));
   const regressions = report.models
     .filter((model) => model.comparable && model.reviewed > 0)
@@ -673,8 +692,37 @@ export async function runCompare(options, io = console) {
     io.error(`regressions: ${regressions.join(", ")}`);
     return 2;
   }
-  const changed = report.toolChanges.length > 0 || report.caseChanges.length > 0;
+  const changed =
+    report.toolChanges.length > 0 ||
+    report.caseChanges.length > 0 ||
+    report.environment?.comparable === false;
   return changed ? 1 : 0;
+}
+
+export async function runReplay(options, io = console) {
+  const paths = options.positionals ?? [];
+  if (paths.length === 0) {
+    throw new Error(
+      "usage: mf replay <scorecard.json...> --suite <suite.json> [--json] [--out <file>]"
+    );
+  }
+  const suite = await loadSuite(options.suite ?? DEFAULT_SUITE);
+  const reports = [];
+  for (const path of paths) {
+    const scorecard = JSON.parse(await readFile(resolve(path), "utf8"));
+    reports.push({ file: path, ...replayScorecard(scorecard, suite) });
+  }
+  const payload = reports.length === 1 ? reports[0] : { reports };
+  const jsonText = JSON.stringify(payload, null, 2);
+  const text = reports.map((report) => `file: ${report.file}\n${formatReplay(report)}`).join("\n\n");
+  if (options.out) {
+    const target = resolve(options.out);
+    const markdown = extname(target).toLowerCase() === ".md";
+    await writeFileAtomic(target, markdown ? text : jsonText);
+    io.log(`wrote ${target}`);
+  }
+  if (options.json || !options.out) io.log(options.json ? jsonText : text);
+  return 0;
 }
 
 export async function runConfig(options, io = console) {
@@ -944,7 +992,10 @@ async function callOnce(adapter, tools, testCase) {
   }
 }
 
-function serialize(suite, cases, summaries, executionInfo = null, profileReport = null) {
+function serialize(suite, cases, summaries, executionInfo = null, profileReport = null, environment = null) {
+  const judgments = cases.flatMap((testCase) =>
+    (testCase.judgments ?? []).map((entry) => ({ caseId: testCase.id, ...entry }))
+  );
   return {
     suite: {
       name: suite.name,
@@ -952,8 +1003,10 @@ function serialize(suite, cases, summaries, executionInfo = null, profileReport 
       tools: suite.tools.map((tool) => tool.name),
       cases: cases.length,
       fingerprint: suiteFingerprint(suite, cases),
-      ...(executionInfo ? { execution: executionInfo } : {})
+      ...(executionInfo ? { execution: executionInfo } : {}),
+      ...(judgments.length > 0 ? { judgments } : {})
     },
+    ...(environment ? { environment } : {}),
     models: summaries,
     ...(profileReport ? { profiles: profileReport } : {})
   };
@@ -1141,7 +1194,8 @@ function parseArgs(argv) {
     allowWrite: [],
     allowNet: [],
     passEnv: [],
-    warmup: 0
+    warmup: 0,
+    positionals: []
   };
 
   for (let i = 1; i < argv.length; i += 1) {
@@ -1249,6 +1303,10 @@ function parseArgs(argv) {
         options.help = true;
         break;
       default:
+        if (!arg.startsWith("-")) {
+          options.positionals.push(arg);
+          break;
+        }
         throw new Error(`unknown option "${arg}"`);
     }
   }
@@ -1307,9 +1365,23 @@ if (isMain) {
       process.exit(1);
     }
   } else if (argv[0] === "compare") {
-    const paths = argv.slice(1).filter((arg) => !arg.startsWith("--"));
+    const knownFlags = new Set(["--json", "--fail-on-regression", "--cross-env"]);
+    const paths = [];
+    const unknownFlags = [];
+    for (const arg of argv.slice(1)) {
+      if (!arg.startsWith("--")) {
+        paths.push(arg);
+      } else if (!knownFlags.has(arg)) {
+        unknownFlags.push(arg);
+      }
+    }
+    for (const flag of unknownFlags) {
+      process.stderr.write(`warn: unknown option "${flag}" for compare (ignored)\n`);
+    }
     if (paths.length !== 2) {
-      process.stderr.write("usage: mf compare <before.json> <after.json> [--fail-on-regression] [--json]\n");
+      process.stderr.write(
+        "usage: mf compare <before.json> <after.json> [--fail-on-regression] [--cross-env] [--json]\n"
+      );
       process.exit(1);
     }
     commandName = "compare";
@@ -1317,7 +1389,8 @@ if (isMain) {
       const code = await runCompare({
         paths,
         json: argv.includes("--json"),
-        failOnRegression: argv.includes("--fail-on-regression")
+        failOnRegression: argv.includes("--fail-on-regression"),
+        crossEnv: argv.includes("--cross-env")
       });
       process.exit(code);
     } catch (error) {
@@ -1366,7 +1439,7 @@ if (isMain) {
     }
   } else if (argv.length === 0 || argv[0] === "help" || argv[0] === "-h" || argv[0] === "--help") {
     process.stdout.write(USAGE);
-  } else if (!["eval", "scan", "case", "coverage", "audit", "lint", "check", "ablate", "cluster", "exec"].includes(argv[0])) {
+  } else if (!["eval", "scan", "case", "coverage", "audit", "lint", "check", "ablate", "cluster", "exec", "replay"].includes(argv[0])) {
     process.stderr.write(`unknown command "${argv[0]}"\n\n${USAGE}`);
     process.exit(1);
   } else if (argv[0] === "case" && argv[1] !== "add") {
@@ -1400,7 +1473,9 @@ if (isMain) {
                     ? await runCluster(options)
                     : argv[0] === "exec"
                     ? await runExec(options)
-                    : await runEval(options);
+                    : argv[0] === "replay"
+                      ? await runReplay(options)
+                      : await runEval(options);
       process.exit(code);
     } catch (error) {
       process.stderr.write(`${redactText(error?.message ?? error)}\n`);

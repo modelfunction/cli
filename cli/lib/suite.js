@@ -124,6 +124,7 @@ function normalizeCase(entry, index, toolNames) {
       throw new Error(`case ${id}: "${key}" must be a boolean`);
     }
   }
+  const judgments = normalizeJudgments(entry.judgments, id);
   return {
     id,
     input: entry.input,
@@ -142,8 +143,42 @@ function normalizeCase(entry, index, toolNames) {
     expect:
       entry.expect && typeof entry.expect === "object" && !Array.isArray(entry.expect)
         ? entry.expect
-        : null
+        : null,
+    ...(judgments.length > 0 ? { judgments } : {})
   };
+}
+
+function normalizeJudgments(value, caseId) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    throw new Error(`case ${caseId}: "judgments" must be an array`);
+  }
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`case ${caseId}: judgments[${index}] must be an object`);
+    }
+    for (const key of ["from", "to"]) {
+      if (entry[key] !== null && typeof entry[key] !== "string") {
+        throw new Error(`case ${caseId}: judgments[${index}].${key} must be a string or null`);
+      }
+    }
+    if (typeof entry.changedAt !== "string" || Number.isNaN(Date.parse(entry.changedAt))) {
+      throw new Error(`case ${caseId}: judgments[${index}].changedAt must be an ISO date string`);
+    }
+    if (typeof entry.reason !== "string" || entry.reason.trim() === "") {
+      throw new Error(`case ${caseId}: judgments[${index}].reason must be a non-empty string`);
+    }
+    if (entry.evidencePointer !== undefined && typeof entry.evidencePointer !== "string") {
+      throw new Error(`case ${caseId}: judgments[${index}].evidencePointer must be a string`);
+    }
+    return {
+      from: entry.from ?? null,
+      to: entry.to ?? null,
+      changedAt: entry.changedAt,
+      reason: entry.reason,
+      ...(entry.evidencePointer ? { evidencePointer: entry.evidencePointer } : {})
+    };
+  });
 }
 
 function normalizeSideEffects(value) {
