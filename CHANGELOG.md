@@ -3,6 +3,19 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.11.3 — 2026-11-15
+
+- Retention set and rotation for Goodhart protection: cases accept
+  `retention: true`, and scorecards report `caseSplit` with separate tuning and
+  retention selection accuracy. `mf eval --rotate <label> [--rotate-size <n>]`
+  deterministically picks a subset of reviewed cases (`sha256(label:caseId)`),
+  so the same label reproduces the same subset, and the scorecard records
+  `rotation: { label, size, total, selected[] }`.
+- `mf compare` treats different rotation labels or sizes as not comparable
+  (`reason: "轮换集不同"`) and the regression gate skips instead of comparing
+  across rotations. Reports without `--rotate` remain comparable with older
+  cards.
+
 ## 0.11.2 — 2026-11-15
 
 - `mf compare` now diffs failure kinds: when both scorecards carry

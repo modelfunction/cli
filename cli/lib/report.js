@@ -87,6 +87,18 @@ export function formatConfusionLine(summary) {
   return `混淆空间: ${parts.join("；")}`;
 }
 
+export function formatSplitLine(summary) {
+  const split = summary.caseSplit;
+  if (!split || split.retention.reviewed === 0) return null;
+  const tuning = split.tuning;
+  const retention = split.retention;
+  return (
+    `留存集: tuning ${tuning.hits}/${tuning.reviewed} (${pct(tuning.accuracy)})` +
+    ` · retention ${retention.hits}/${retention.reviewed} (${pct(retention.accuracy)})` +
+    "（两张子集的差距是 Goodhart 信号，不是噪声）"
+  );
+}
+
 export function formatCaseLines(summary, cases) {
   const lines = [];
   const byId = new Map(cases.map((testCase) => [testCase.id, testCase]));
@@ -187,6 +199,8 @@ export function formatMarkdown(suite, cases, summaries) {
     if (failureLine) lines.push(failureLine);
     const confusionLine = formatConfusionLine(summary);
     if (confusionLine) lines.push(confusionLine);
+    const splitLine = formatSplitLine(summary);
+    if (splitLine) lines.push(splitLine);
     if (failureLine || confusionLine) lines.push("");
     const bucketColumn = summary.hasBucketVariety;
     lines.push(

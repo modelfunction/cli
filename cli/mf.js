@@ -5,11 +5,12 @@ import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSuite, toModelTools } from "./lib/suite.js";
 import { scoreModel, pickRepresentative, pct, costOf, tokensOf } from "./lib/score.js";
-import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine, formatFailureLine, formatConfusionLine } from "./lib/report.js";
+import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine, formatFailureLine, formatConfusionLine, formatSplitLine } from "./lib/report.js";
 import { scanProject, buildSuiteDraft, formatScanSummary, addTools, redactReport } from "./lib/scan.js";
 import { probeStdioServer, probeHttpServer } from "./lib/mcp-probe.js";
 import { loadAdapterTools } from "./lib/adapter-import.js";
 import { addCases, computeCoverage, formatCoverage, confusableNeighbors } from "./lib/cases.js";
+import { rotateCases } from "./lib/rotation.js";
 import { lintSuite, formatLint } from "./lib/lint.js";
 import { check, checkMany, formatCheck, formatCheckMany } from "./lib/check.js";
 import { auditSuite, formatAudit } from "./lib/audit.js";
@@ -97,6 +98,8 @@ Eval options:
   --models <ids>        comma-separated ids from models.json (default: models with API keys set)
   --models-file <path>  model registry (default: built-in registry)
   --case <ids>          run only these case ids (comma-separated, repeatable)
+  --rotate <label>      deterministic subset of reviewed cases; same label = same subset
+  --rotate-size <n>     subset size for --rotate (default: suite.rotation.size or 12)
   --profile <names>     score each mounted group separately ("all" or names from suite.profiles)
   --repeat <n>          run each case n times and score the majority; reports unstable cases (default 1)
   --max-cost <amount>   stop after the estimated spend crosses this limit (exit 2; no partial scorecard)
@@ -142,7 +145,16 @@ export async function runEval(options, io = console) {
     throw new Error("--profile 暂不支持与 --execute 组合");
   }
   const suite = await loadSuite(options.suite);
-  const cases = selectCases(suite.cases, options.cases);
+  let cases = selectCases(suite.cases, options.cases);
+  let rotation = null;
+  if (options.rotate) {
+    rotation = rotateCases(cases, {
+      label: options.rotate,
+      size: options.rotateSize ?? suite.rotation?.size ?? 12
+    });
+    if (rotation.selectedIds.length === 0) throw new Error("--rotate: 没有可用的已复核用例");
+    cases = rotation.selected;
+  }
   const { registry, adapters } = await resolveModels(options.models, options.modelsFile, io, {
     retries: options.retries,
     minIntervalMs: options.minIntervalMs
@@ -247,16 +259,22 @@ export async function runEval(options, io = console) {
     const payload = markdown
       ? formatMarkdown(suite, cases, summaries) +
         (profileReport ? `\n\n${formatProfileMarkdown(profileReport)}` : "")
-      : JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport, environment), null, 2);
+      : JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport, environment, rotation), null, 2);
     await writeFileAtomic(target, payload);
     io.log(`wrote ${target}`);
   }
 
   if (options.json) {
-    io.log(JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport, environment), null, 2));
+    io.log(JSON.stringify(serialize(suite, cases, summaries, executionInfo, profileReport, environment, rotation), null, 2));
   } else {
     io.log(`suite: ${suite.name} — ${cases.length} cases, ${suite.tools.length} tools`);
     io.log(`file:  ${suite.path}`);
+    if (rotation) {
+      io.log(
+        `rotation: 标签 "${rotation.label}"，抽取 ${rotation.selectedIds.length}/${rotation.total} 条已复核用例` +
+          (rotation.rotated ? "" : "（全量，未缩减）")
+      );
+    }
     for (const summary of summaries) {
       io.log("");
       if (options.showCases) {
@@ -270,6 +288,8 @@ export async function runEval(options, io = console) {
       if (failureLine) io.log(failureLine);
       const confusionLine = formatConfusionLine(summary);
       if (confusionLine) io.log(confusionLine);
+      const splitLine = formatSplitLine(summary);
+      if (splitLine) io.log(splitLine);
       if (summary.stability) {
         const unstable = summary.stability.unstable;
         const list = unstable.slice(0, 8).map((item) => item.id).join(", ");
@@ -333,7 +353,7 @@ export async function runEval(options, io = console) {
     const baseline = JSON.parse(await readFile(resolve(options.baseline), "utf8"));
     const comparison = compareScorecards(
       baseline,
-      serialize(suite, cases, summaries, executionInfo, null, environment)
+      serialize(suite, cases, summaries, executionInfo, null, environment, rotation)
     );
     if (!options.json) {
       io.log("");
@@ -1017,7 +1037,7 @@ async function callOnce(adapter, tools, testCase) {
   }
 }
 
-function serialize(suite, cases, summaries, executionInfo = null, profileReport = null, environment = null) {
+function serialize(suite, cases, summaries, executionInfo = null, profileReport = null, environment = null, rotation = null) {
   const judgments = cases.flatMap((testCase) =>
     (testCase.judgments ?? []).map((entry) => ({ caseId: testCase.id, ...entry }))
   );
@@ -1032,6 +1052,16 @@ function serialize(suite, cases, summaries, executionInfo = null, profileReport 
       ...(judgments.length > 0 ? { judgments } : {})
     },
     ...(environment ? { environment } : {}),
+    ...(rotation
+      ? {
+          rotation: {
+            label: rotation.label,
+            size: rotation.size,
+            total: rotation.total,
+            selected: rotation.selectedIds
+          }
+        }
+      : {}),
     models: summaries,
     ...(profileReport ? { profiles: profileReport } : {})
   };
@@ -1244,6 +1274,13 @@ function parseArgs(argv) {
       case "--models": options.models = splitList(value()); break;
       case "--models-file": options.modelsFile = resolve(value()); break;
       case "--case": options.cases = (options.cases ?? []).concat(splitList(value())); break;
+      case "--rotate": options.rotate = value(); break;
+      case "--rotate-size": {
+        const raw = Number(value());
+        if (!Number.isInteger(raw) || raw < 1) throw new Error("--rotate-size expects a positive integer");
+        options.rotateSize = raw;
+        break;
+      }
       case "--profile": options.profiles = splitList(value()); break;
       case "--repeat": {
         const raw = Number(value());
