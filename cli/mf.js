@@ -5,7 +5,7 @@ import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSuite, toModelTools } from "./lib/suite.js";
 import { scoreModel, pickRepresentative, pct, costOf, tokensOf } from "./lib/score.js";
-import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine } from "./lib/report.js";
+import { formatTable, formatCaseLines, formatMarkdown, formatBucketLine, formatFailureLine } from "./lib/report.js";
 import { scanProject, buildSuiteDraft, formatScanSummary, addTools, redactReport } from "./lib/scan.js";
 import { probeStdioServer, probeHttpServer } from "./lib/mcp-probe.js";
 import { loadAdapterTools } from "./lib/adapter-import.js";
@@ -176,7 +176,8 @@ export async function runEval(options, io = console) {
         results: evaluated.results,
         pricing,
         scope: "base",
-        currency
+        currency,
+        mountedTools: suite.tools.map((tool) => tool.name)
       });
       if (evaluated.stability) summary.stability = evaluated.stability;
       runs.push({ adapter, results: evaluated.results, summary });
@@ -263,6 +264,8 @@ export async function runEval(options, io = console) {
       }
       io.log(formatTable([summary]));
       if (summary.hasBucketVariety) io.log(formatBucketLine(summary));
+      const failureLine = formatFailureLine(summary);
+      if (failureLine) io.log(failureLine);
       if (summary.stability) {
         const unstable = summary.stability.unstable;
         const list = unstable.slice(0, 8).map((item) => item.id).join(", ");
@@ -452,7 +455,14 @@ export async function runAblate(options, io = console) {
           onProgress: makeProgress(options, io, `${adapter.id}/full`, baseCases.length)
         })
       ).results;
-      const full = scoreModel({ model: adapter.id, cases: baseCases, results: fullResults, pricing, currency });
+      const full = scoreModel({
+        model: adapter.id,
+        cases: baseCases,
+        results: fullResults,
+        pricing,
+        currency,
+        mountedTools: baseTools.map((tool) => tool.name)
+      });
       const reducedResults = (
         await evaluate(adapter, reducedTools, reducedCases, 1, {
           pricing,
@@ -460,7 +470,14 @@ export async function runAblate(options, io = console) {
           onProgress: makeProgress(options, io, `${adapter.id}/ablated`, reducedCases.length)
         })
       ).results;
-      const reduced = scoreModel({ model: adapter.id, cases: reducedCases, results: reducedResults, pricing, currency });
+      const reduced = scoreModel({
+        model: adapter.id,
+        cases: reducedCases,
+        results: reducedResults,
+        pricing,
+        currency,
+        mountedTools: baseTools.filter((tool) => tool.name !== ablated.name).map((tool) => tool.name)
+      });
       models.push(analyzeAblation(adapter.id, full, reduced));
     }
   } catch (error) {
@@ -1084,7 +1101,8 @@ async function evaluateProfiles({
         results: mountedEval.results,
         pricing,
         scope: "profiles",
-        currency
+        currency,
+        mountedTools: profile.tools
       });
       const allInOne = scoreModel({
         model: run.adapter.id,
@@ -1092,7 +1110,8 @@ async function evaluateProfiles({
         results: profileCases.map((testCase) => run.results[indexById.get(testCase.id)]),
         pricing,
         scope: "profiles",
-        currency
+        currency,
+        mountedTools: suite.tools.map((tool) => tool.name)
       });
       const entry = analyzeMount(profile, mounted, allInOne);
       entry.usage = {

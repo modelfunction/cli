@@ -3,6 +3,19 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.11.0 — 2026-11-15
+
+- Failure taxonomy: every scored row carries `failureKind` (`pass` /
+  `legalFirstStep` / `args` / `wrongTool` / `hallucinatedTool` / `noCall` /
+  `unexpectedCall` / `transport`), and scorecards aggregate `failureKinds` at
+  the model and bucket level with all eight keys always present. A tool name
+  that is not in the mounted set is reported as `hallucinatedTool` instead of
+  being folded into ordinary misroutes; CLI paths pass the suite, profile and
+  ablation tool sets, and library callers that omit `mountedTools` fall back to
+  `wrongTool`. Existing metrics, gates and exit codes are unchanged.
+- Text reports print a failure breakdown when any failure exists, and the
+  Markdown case table appends the failure kind to failing rows.
+
 ## 0.10.1 — 2026-11-15
 
 - The 0.10.0 tarball shipped the `calibrate` npm script but omitted

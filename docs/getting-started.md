@@ -9,7 +9,7 @@
 - 一个 OpenAI 兼容的模型端点与 Key（DeepSeek / Qwen / GLM / SiliconFlow / OpenAI，或本地 Ollama）
 
 ```bash
-npx -y modelfunction-cli@0.10.1 --version
+npx -y modelfunction-cli@0.11.0 --version
 ```
 
 可选：装成本地依赖，启动更快
@@ -155,7 +155,7 @@ npx mf ablate --suite mf.suite.json --profile screening \
   "mcpServers": {
     "modelfunction": {
       "command": "npx",
-      "args": ["-y", "modelfunction-cli@0.10.1", "mcp"]
+      "args": ["-y", "modelfunction-cli@0.11.0", "mcp"]
     }
   }
 }
@@ -176,7 +176,7 @@ Claude Code 放 `.mcp.json`，Cursor 放 `.cursor/mcp.json`，Kimi Code 按其�
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | `model "xxx": environment variable ... is not set` | Key 没设 | 按提示设置环境变量，或先 `--models mock` |
-| 不传 `--models` 直接跑 | 无 Key 时自动回退 mock，并提示 | 正常，用于离线自查 |
+| 不传 `--models` 直接跑 | 无 Key 时不再回落 mock（0.9.1 起） | 报错退出 1；离线自查请显式 `--models mock` |
 | `cases 为空` | `scan` 只产出工具 | 用 `mf case add` 补用例 |
 | `不可直接比较` | 工具或用例指纹变了 | 确认是有意变更；否则回退定义 |
 | 结果波动 | 供应商侧模型漂移 | 重复跑、固定模型版本、看多条用例趋势 |

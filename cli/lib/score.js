@@ -100,7 +100,27 @@ export function legalFirstCallsOf(testCase) {
   return testCase.expectedTool ? [testCase.expectedTool] : [];
 }
 
-export function scoreModel({ model, cases, results, pricing, scope = "base", currency = "CNY" }) {
+export const FAILURE_KINDS = [
+  "pass",
+  "legalFirstStep",
+  "args",
+  "wrongTool",
+  "hallucinatedTool",
+  "noCall",
+  "unexpectedCall",
+  "transport"
+];
+
+export function scoreModel({
+  model,
+  cases,
+  results,
+  pricing,
+  scope = "base",
+  currency = "CNY",
+  mountedTools = null
+}) {
+  const mountedSet = Array.isArray(mountedTools) ? new Set(mountedTools) : null;
   const rows = cases.map((testCase, index) => {
     const result = results[index];
     const actualTool = result.ok ? (result.toolCalls?.[0]?.name ?? null) : null;
@@ -117,12 +137,33 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
       : { total: 0, matched: 0, failures: [] };
     const passed = Boolean(result.ok) && selectionCorrect && args.failures.length === 0;
     const error = result.error ?? null;
+    // One row has exactly one outcome. A hallucinated tool name is not the same
+    // failure as picking the wrong mounted tool, and abstaining is not the same
+    // as being confused — the nightly report has to tell them apart.
+    const failureKind = error
+      ? "transport"
+      : bucket !== "singleIntent" && legalFirstStep
+        ? "legalFirstStep"
+        : testCase.expectedTool === null
+          ? actualTool === null
+            ? "pass"
+            : "unexpectedCall"
+          : actualTool === null
+            ? "noCall"
+            : actualTool !== testCase.expectedTool
+              ? mountedSet && !mountedSet.has(actualTool)
+                ? "hallucinatedTool"
+                : "wrongTool"
+              : args.failures.length > 0
+                ? "args"
+                : "pass";
     return {
       id: testCase.id,
       expectedTool: testCase.expectedTool,
       actualTool,
       selectionCorrect,
       legalFirstStep,
+      failureKind,
       bucket,
       ...(Array.isArray(testCase.acceptableFirstCalls) && testCase.acceptableFirstCalls.length > 0
         ? { acceptableFirstCalls: testCase.acceptableFirstCalls }
@@ -163,7 +204,8 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
         : null,
       legalFirstSteps,
       legalFirstStepRate: bucketRows.length ? legalFirstSteps / bucketRows.length : null,
-      firstCallMisses: bucketMisses
+      firstCallMisses: bucketMisses,
+      failureKinds: countFailureKinds(bucketRows)
     };
     // A transport failure is not a behavioural miss: keep it countable but out
     // of the behavioural denominator, or a 429 night reads as a worse suite.
@@ -252,6 +294,7 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
     passRate: reviewedTotal ? passed / reviewedTotal : 0,
     errors,
     errorsByKind,
+    failureKinds: countFailureKinds(reviewedRows),
     scoredTotal,
     retries: rows.reduce((sum, row) => sum + (row.retries ?? 0), 0),
     p50LatencyMs: percentile(latencies, 0.5),
@@ -268,6 +311,14 @@ export function scoreModel({ model, cases, results, pricing, scope = "base", cur
     totalTokens,
     rows
   };
+}
+
+function countFailureKinds(rows) {
+  const counts = Object.fromEntries(FAILURE_KINDS.map((kind) => [kind, 0]));
+  for (const row of rows) {
+    if (row.failureKind) counts[row.failureKind] = (counts[row.failureKind] ?? 0) + 1;
+  }
+  return counts;
 }
 
 export function classifyError(error) {

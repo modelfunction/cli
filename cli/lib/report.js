@@ -48,6 +48,27 @@ export function formatBucketLine(summary) {
   return `buckets: ${parts.join(" · ")}`;
 }
 
+const FAILURE_LABELS = {
+  transport: "传输错误",
+  noCall: "未调用",
+  hallucinatedTool: "幻觉工具",
+  wrongTool: "选错工具",
+  unexpectedCall: "负例误调",
+  args: "参数不符"
+};
+
+export function formatFailureLine(summary) {
+  const kinds = summary.failureKinds;
+  if (!kinds) return null;
+  const parts = Object.keys(FAILURE_LABELS)
+    .filter((kind) => (kinds[kind] ?? 0) > 0)
+    .map((kind) => `${FAILURE_LABELS[kind]} ${kinds[kind]}`);
+  if (parts.length === 0) return null;
+  const extra = [`通过 ${kinds.pass ?? 0}`];
+  if ((kinds.legalFirstStep ?? 0) > 0) extra.push(`合法首步 ${kinds.legalFirstStep}`);
+  return `失败分解: ${parts.join(" · ")}（${extra.join(" · ")}）`;
+}
+
 export function formatCaseLines(summary, cases) {
   const lines = [];
   const byId = new Map(cases.map((testCase) => [testCase.id, testCase]));
@@ -144,6 +165,8 @@ export function formatMarkdown(suite, cases, summaries) {
       ""
     );
     if (summary.hasBucketVariety) lines.push(formatBucketLine(summary), "");
+    const failureLine = formatFailureLine(summary);
+    if (failureLine) lines.push(failureLine, "");
     const bucketColumn = summary.hasBucketVariety;
     lines.push(
       bucketColumn ? "| case | bucket | expected | got | args | result |" : "| case | expected | got | args | result |",
@@ -156,7 +179,7 @@ export function formatMarkdown(suite, cases, summaries) {
           ? "legal first step"
           : row.passed
             ? "pass"
-            : "fail";
+            : `fail (${row.failureKind ?? "unknown"})`;
       const args = row.args.total
         ? `${row.args.matched}/${row.args.total}${row.args.failures.length ? ` (miss: ${row.args.failures.join(", ")})` : ""}`
         : "-";
