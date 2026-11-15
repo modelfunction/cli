@@ -70,7 +70,7 @@ templates\local\nightly.cmd
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MF_VERSION` | `0.9.1` | 固定版本，避免 npx 漂移 |
+| `MF_VERSION` | `0.10.1` | 固定版本，避免 npx 漂移 |
 | `MF_SUITE` | `mf.suite.json` | 套件 |
 | `MF_MODELS` | `mf.models.json` | 模型注册表 |
 | `MF_BASELINE` | `.mf/baseline.json` | 存在时自动加 `--baseline --fail-on-regression` |
@@ -86,6 +86,8 @@ templates\local\nightly.cmd
 - `.mf/nightly/scorecard.<yyyyMMdd-HHmmss>.json`：本轮评分卡；
 - `.mf/eval-state.json`：本轮清单快照；
 - 退出码：`0` 通过（含跳过）、`2` 回归 / 基线模型缺失 / 本轮全部调用失败 / 触顶成本 / `--fail-under` 未达标。
+
+统计口径（0.10 起）：单晚门禁用 α=.05，连续 30 晚至少一次假阳性的概率约为 1−(0.95)^30≈79%——把 exit 2 当作“需要人工复核”的信号，不要当作已经确认回归。`mf compare` 会输出配对翻转的 McNemar 精确 p 值与独立设计 MDE；`--repeat` 采集过 stability 的用例发生翻转时只记 warning，不触发门禁。环境块不一致（如换了 `--models-file`）时门禁返回 skip 并点名字段，不会误报回归；跨环境比较需显式 `--cross-env`。
 
 注册 Windows 计划任务（每天醒来，但没变更就 0 成本）：
 

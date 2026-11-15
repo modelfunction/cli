@@ -189,15 +189,16 @@ export async function startMcpServer() {
         "比较两份评分卡 JSON：可比性、升降、干扰归因与混淆矩阵。只读文件，不调用模型。",
       inputSchema: {
         before: z.string().describe("旧评分卡 JSON 路径"),
-        after: z.string().describe("新评分卡 JSON 路径")
+        after: z.string().describe("新评分卡 JSON 路径"),
+        crossEnv: z.boolean().optional().describe("环境不一致时强制比较（等价于 CLI --cross-env）")
       }
     },
-    async ({ before, after }) => {
+    async ({ before, after, crossEnv }) => {
       const [oldText, newText] = await Promise.all([
         readFile(resolve(before), "utf8"),
         readFile(resolve(after), "utf8")
       ]);
-      return json(compareScorecards(JSON.parse(oldText), JSON.parse(newText)));
+      return json(compareScorecards(JSON.parse(oldText), JSON.parse(newText), { crossEnv: crossEnv === true }));
     }
   );
 
