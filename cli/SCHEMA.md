@@ -177,7 +177,10 @@ skills 只做静态检查，不参与模型评测。
 
 `--json` 输出 `{ "report": {...}, "draft": {...} }`；默认写 `mf.suite.json`（draft）与 `mf.scan.json`（report）。
 
-report：`root`、`tools[]`（`name` / `description` / `parameters` / `origin` / `confidence` / `source` / `note?` / `descriptionSource?`）、`skills[]`、`mcpServers[]`（env 只保留 `envKeys`，headers 只保留 `headerKeys`；URL 去掉 userinfo / query / hash）、`probes[]`（`server` / `ok` / `toolCount?` / `tools?` / `error?`）、`sources[]`、`warnings[]`。`--probe` 支持 stdio 与 streamable HTTP 两种传输。
+report：`root`、`tools[]`（`name` / `description` / `parameters` / `origin` / `confidence` / `source` / `note?` / `descriptionSource?` / `schemaNote?`）、`skills[]`、`mcpServers[]`（env 只保留 `envKeys`，headers 只保留 `headerKeys`；URL 去掉 userinfo / query / hash）、`probes[]`（`server` / `ok` / `toolCount?` / `tools?` / `error?`）、`sources[]`、`warnings[]`。`--probe` 支持 stdio 与 streamable HTTP 两种传输。
+
+- **Python 装饰器（0.12.0 起）**：除 `@tool`、`class X(Tool)`、`@registry.action(...)` 外，支持 `@function_tool`、`@agent.tool` / `@agent.tool_plain`、`@mcp.tool()` / `@server.tool()`。命名空间装饰器要求同文件出现 `pydantic_ai` / `agents` / `fastmcp` / `mcp` 的 import，否则不提取（避免把无关 `@app.tool` 当工具）；注入参数（`RunContext` / `RunContextWrapper` / `ToolContext`，或无注解的 `ctx`）不进入 schema。名称与描述优先级：`name_override` → `name` → 函数名；`description_override` → `description` → 装饰器位置字符串 → docstring。
+- **schemaNote（0.12.0 起）**：静态无法解析的参数类型（Pydantic 模型、TypedDict、dataclass 等）输出空 schema，并在工具上记 `schemaNote: "unresolved-types: <参数名…>"`，不再回退成 `string`。`mf lint` 对这些参数报 info `param-type-unresolved`（区别于真正缺 type 的 error `param-type-missing`）。
 
 `scan --json` 在工具与 skill 都未找到时退出码为 3（只有 skill 也算有结果，退出 0）。
 

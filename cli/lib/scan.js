@@ -244,7 +244,7 @@ export async function scanProject(root = ".") {
       if (!text) continue;
       if (name.endsWith(".py") && !TEST_PATH.test(rel)) {
         const pythonTools = [
-          ...scanPythonTools(text),
+          ...scanPythonDecoratorTools(text),
           ...scanPythonClassTools(text),
           ...scanPythonActionDecorators(text)
         ];
@@ -253,7 +253,7 @@ export async function scanProject(root = ".") {
             source: rel,
             origin: "py-tool",
             confidence: "medium",
-            note: "从 @tool 装饰器、类型注解或 class-based Tool 提取，需人工确认"
+            note: "从 @tool / @function_tool / @agent.tool / @mcp.tool 等装饰器、类型注解或 class-based Tool 提取，需人工确认"
           });
         }
       }
@@ -370,7 +370,8 @@ export function buildSuiteDraft(report) {
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
-      ...(tool.descriptionSource ? { descriptionSource: tool.descriptionSource } : {})
+      ...(tool.descriptionSource ? { descriptionSource: tool.descriptionSource } : {}),
+      ...(tool.schemaNote ? { schemaNote: tool.schemaNote } : {})
     })),
     cases: []
   };
@@ -630,44 +631,133 @@ function parseFrontmatter(text) {
   return meta;
 }
 
-// LangChain-style tool definitions: @tool above a typed function. The runtime
-// builds the JSON schema from the same annotations, so this is the real schema,
-// not a guess — only the description can drift (first docstring line vs args_schema).
+// Decorator-registered Python tools. The runtime builds the JSON schema from
+// the same annotations, so this is the real schema, not a guess — only the
+// description and the registered name can drift. Static only: never import or
+// execute the module.
+//
+// Flavors:
+//   @tool / @tool(...)             LangChain; also the OpenAI Agents alias
+//   @function_tool / @function_tool(...)   OpenAI Agents
+//   @agent.tool / @agent.tool_plain        pydantic-ai
+//   @mcp.tool() / @server.tool()           FastMCP
+// Namespaced decorators require a framework import in the same file: without
+// it `@app.tool` is too generic and would produce false positives.
+const PY_FRAMEWORK_IMPORT = /\b(?:from|import)\s+(?:pydantic_ai|agents|fastmcp|mcp(?:\.server)?)\b/;
+const PY_INJECTED_TYPE = /^(?:RunContext|RunContextWrapper|ToolContext)\b/;
+const PY_INJECTED_NAMES = new Set(["ctx", "context", "run_context"]);
+
 export function scanPythonTools(text) {
+  return scanPythonDecoratorTools(text);
+}
+
+export function scanPythonDecoratorTools(text) {
   const lines = text.split(/\r?\n/);
+  const hasFrameworkImport = PY_FRAMEWORK_IMPORT.test(text);
   const tools = [];
   for (let i = 0; i < lines.length; i += 1) {
-    if (!/^\s*@tool\b/.test(lines[i])) continue;
-    let j = i + 1;
-    while (j < lines.length && j - i <= 4 && !/^\s*(async\s+)?def\s+\w+\s*\(/.test(lines[j])) j += 1;
-    const defMatch = lines[j]?.match(/^\s*(?:async\s+)?def\s+(\w+)\s*\(/);
+    const decorator = matchPyToolDecorator(lines, i, hasFrameworkImport);
+    if (!decorator) continue;
+    const defLine = findDecoratedFunction(lines, decorator.endLine);
+    if (defLine === null) continue;
+    const defMatch = lines[defLine].match(/^\s*(?:async\s+)?def\s+(\w+)\s*\(/);
     if (!defMatch) continue;
-    const signature = collectSignature(lines, j, defMatch[0].length);
+    const signature = collectSignature(lines, defLine, defMatch[0].length);
     if (signature === null) continue;
+    const doc = pythonDocstringInfo(lines, signature.endLine);
+    const name =
+      firstPyKwargString(decorator.args, ["name_override", "name"]) || defMatch[1];
+    const description =
+      firstPyKwargString(decorator.args, ["description_override", "description"]) ||
+      firstPyPositionalString(decorator.args) ||
+      doc.summary ||
+      pythonDocstring(lines, signature.endLine);
     const properties = {};
     const required = [];
+    const unresolved = [];
     for (const part of splitPyParams(signature.text)) {
       const param = parsePyParam(part);
-      if (!param) continue;
+      if (!param || isInjectedParam(param)) continue;
       properties[param.name] = param.schema;
+      if (param.unresolved) unresolved.push(param.name);
       if (param.required) required.push(param.name);
     }
-    const doc = pythonDocstringInfo(lines, signature.endLine);
-    for (const [name, schema] of Object.entries(properties)) {
-      if (!schema.description && doc.args[name]) schema.description = doc.args[name];
+    for (const [paramName, schema] of Object.entries(properties)) {
+      if (!schema.description && doc.args[paramName]) schema.description = doc.args[paramName];
     }
     tools.push({
-      name: defMatch[1],
-      description: doc.summary || pythonDocstring(lines, signature.endLine),
+      name,
+      description,
       parameters: {
         type: "object",
         properties,
         ...(required.length > 0 ? { required } : {})
-      }
+      },
+      ...(unresolved.length > 0 ? { schemaNote: `unresolved-types: ${unresolved.join(", ")}` } : {})
     });
     i = signature.endLine;
   }
   return tools;
+}
+
+function matchPyToolDecorator(lines, index, hasFrameworkImport) {
+  const trimmed = lines[index].trim();
+  if (!trimmed.startsWith("@")) return null;
+  if (/^@(?:tool|function_tool)\b/.test(trimmed)) return decoratorArgs(lines, index);
+  if (!hasFrameworkImport) return null;
+  if (/^@[A-Za-z_]\w*\.(?:tool|tool_plain)\b/.test(trimmed)) return decoratorArgs(lines, index);
+  return null;
+}
+
+function decoratorArgs(lines, index) {
+  const line = lines[index];
+  const open = line.indexOf("(");
+  if (open === -1) return { args: "", endLine: index };
+  const signature = collectSignature(lines, index, open + 1);
+  return signature ? { args: signature.text, endLine: signature.endLine } : { args: "", endLine: index };
+}
+
+function findDecoratedFunction(lines, decoratorEnd) {
+  for (let j = decoratorEnd + 1; j < lines.length && j - decoratorEnd <= 8; j += 1) {
+    const text = lines[j].trim();
+    if (!text || text.startsWith("#") || text.startsWith("@")) continue;
+    return /^(?:async\s+)?def\s+\w+\s*\(/.test(text) ? j : null;
+  }
+  return null;
+}
+
+function firstPyKwargString(args, keys) {
+  for (const part of splitPyParams(args)) {
+    const match = part.match(/^([A-Za-z_]\w*)\s*=\s*([\s\S]+)$/);
+    if (!match || !keys.includes(match[1])) continue;
+    const value = pyStringLiteral(match[2]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function firstPyPositionalString(args) {
+  for (const part of splitPyParams(args)) {
+    if (/^[A-Za-z_]\w*\s*=/.test(part)) continue;
+    if (/^\*/.test(part)) continue;
+    const value = pyStringLiteral(part);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function pyStringLiteral(text) {
+  const match = String(text)
+    .trim()
+    .match(/^(?:[rRuUbB]{0,2})(["'])([\s\S]*?)\1$/);
+  return match ? match[2] : null;
+}
+
+function isInjectedParam(param) {
+  if (param.typeText && PY_INJECTED_TYPE.test(param.typeText.replace(/^Annotated\s*\[\s*/, ""))) {
+    return true;
+  }
+  return !param.typeText && PY_INJECTED_NAMES.has(param.name);
 }
 
 // Class-based tools: smolagents-style `class X(Tool)` with `name`,
@@ -896,8 +986,17 @@ const PY_TYPES = {
   bool: "boolean",
   list: "array",
   List: "array",
+  Sequence: "array",
+  set: "array",
+  Set: "array",
+  tuple: "array",
+  Tuple: "array",
   dict: "object",
-  Dict: "object"
+  Dict: "object",
+  Mapping: "object",
+  Path: "string",
+  datetime: "string",
+  date: "string"
 };
 
 function parsePyParam(part) {
@@ -909,17 +1008,39 @@ function parsePyParam(part) {
   if (!name || name === "self" || name === "cls") return null;
   const typeText = colon === -1 ? "" : head.slice(colon + 1).trim();
   const description = (typeText.match(/Annotated\s*\[[^,]+,\s*["']([^"']+)["']/) ?? [])[1] ?? "";
-  const schema = { type: pyType(typeText) };
+  const { type, unresolved } = pyTypeSchema(typeText);
+  const schema = type ? { type } : {};
   if (description) schema.description = description;
-  return { name, schema, required: !hasDefault };
+  return { name, schema, typeText, unresolved, required: !hasDefault };
 }
 
-function pyType(typeText) {
-  const core = typeText
-    .replace(/^Annotated\s*\[\s*([^,\]]+).*/s, "$1")
-    .replace(/^Optional\s*\[\s*(.*?)\s*\]$/s, "$1")
-    .trim();
-  return PY_TYPES[core] ?? (core.endsWith("List") || core.startsWith("list") ? "array" : "string");
+// Static type hints cannot resolve project classes (Pydantic models, TypedDict,
+// dataclasses). Emit no type instead of guessing "string"; the tool carries a
+// schemaNote so the caller knows the schema is partial.
+function pyTypeSchema(typeText) {
+  if (!typeText) return { type: null, unresolved: false };
+  let core = typeText.replace(/^Annotated\s*\[\s*([^,\]]+).*/s, "$1").trim();
+  const optional = core.match(/^Optional\s*\[\s*(.*?)\s*\]$/s);
+  if (optional) core = optional[1].trim();
+  const generic = core.match(/^(list|List|Sequence|set|Set|tuple|Tuple|dict|Dict|Mapping)\s*\[/);
+  if (generic) {
+    return { type: ["dict", "Dict", "Mapping"].includes(generic[1]) ? "object" : "array", unresolved: false };
+  }
+  if (core.includes("|")) {
+    const members = core.split("|").map((part) => part.trim()).filter(Boolean);
+    const narrowed = members.filter((part) => part !== "None" && part !== "NoneType");
+    if (narrowed.length !== 1) return { type: null, unresolved: true };
+    core = narrowed[0];
+  }
+  if (core === "Any") return { type: null, unresolved: false };
+  if (core.startsWith("Literal[")) {
+    const strings = [...core.matchAll(/["']([^"']*)["']/g)].map((match) => match[1]);
+    return strings.length > 0 ? { type: "string", unresolved: false } : { type: null, unresolved: true };
+  }
+  const mapped = PY_TYPES[core];
+  if (mapped) return { type: mapped, unresolved: false };
+  // Pydantic model / TypedDict / dataclass or any other project class.
+  return { type: null, unresolved: true };
 }
 
 function pythonDocstring(lines, fromLine) {

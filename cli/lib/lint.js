@@ -347,7 +347,14 @@ export function lintSuite(suite, { pairScope } = {}) {
         });
       }
       if (!schema?.type) {
-        add("error", "param-type-missing", tool.name, `参数 ${name} 没有 type`, { param: name });
+        const unresolved = typeof tool.schemaNote === "string" && tool.schemaNote.includes(name);
+        if (unresolved) {
+          add("info", "param-type-unresolved", tool.name, `参数 ${name} 的类型是项目类，静态扫描无法解析；请在运行时确认`, {
+            param: name
+          });
+        } else {
+          add("error", "param-type-missing", tool.name, `参数 ${name} 没有 type`, { param: name });
+        }
       }
       if (schema?.type === "object" && !schema.properties) {
         add("warn", "param-object-no-props", tool.name, `参数 ${name} 是 object 但未定义 properties`, { param: name });
