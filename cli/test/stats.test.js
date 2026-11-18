@@ -53,7 +53,7 @@ function environment(hash) {
     os: "win32-x64",
     generatedAt: "2026-11-14T00:00:00.000Z",
     modelsFileHash: hash,
-    sampling: { repeat: 1, retries: 2, minIntervalMs: 0 },
+    sampling: { repeat: 1, retry: 2, minIntervalMs: 0 },
     unknown: []
   };
 }

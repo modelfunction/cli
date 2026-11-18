@@ -22,7 +22,7 @@ function environment(overrides = {}) {
     os: "win32-x64",
     generatedAt: "2026-11-14T00:00:00.000Z",
     modelsFileHash: "sha256:aaaa",
-    sampling: { repeat: 1, retries: 2, minIntervalMs: 0 },
+    sampling: { repeat: 1, retry: 2, minIntervalMs: 0 },
     unknown: [],
     ...overrides
   };
@@ -128,7 +128,8 @@ test("compareEnvironments: same, modelsFileHash differs, cross-env, missing bloc
 
   const missingBoth = compareEnvironments(undefined, undefined);
   assert.equal(missingBoth.comparable, true);
-  assert.deepEqual(missingBoth.warnings, []);
+  assert.equal(missingBoth.warnings.length, 1);
+  assert.match(missingBoth.warnings[0], /两份报告都无环境信息/);
 
   const unknown = compareEnvironments(
     environment(),
@@ -138,9 +139,17 @@ test("compareEnvironments: same, modelsFileHash differs, cross-env, missing bloc
   assert.deepEqual(unknown.differences, []);
   assert.deepEqual(unknown.unknown, [{ field: "modelsFileHash", before: false, after: true }]);
 
-  const sampling = compareEnvironments(environment(), environment({ sampling: { repeat: 3, retries: 2, minIntervalMs: 0 } }));
+  const sampling = compareEnvironments(environment(), environment({ sampling: { repeat: 3, retry: 2, minIntervalMs: 0 } }));
   assert.equal(sampling.comparable, false);
   assert.deepEqual(sampling.differences.map((entry) => entry.field), ["sampling"]);
+
+  // 0.10–0.11.3 cards emitted the legacy names; they stay comparable.
+  const legacy = compareEnvironments(
+    environment({ sampling: { repeat: 1, retries: 2, minInterval: 0 } }),
+    environment()
+  );
+  assert.equal(legacy.comparable, true);
+  assert.deepEqual(legacy.differences, []);
 });
 
 test("E1/E2/E3: modelsFileHash mismatch is not comparable unless --cross-env", async () => {
@@ -171,6 +180,10 @@ test("E4/E5/E9: missing or declared-unknown environment stays comparable with vi
   assert.equal(missing.models[0].comparable, true);
   assert.match(formatCompare(missing), /warn: 至少一份报告无环境信息/);
   assert.equal((await compareExit(oldCard, newCard)).code, 0);
+
+  const bothMissing = compareScorecards(scorecard(null), scorecard(null));
+  assert.equal(bothMissing.environment.comparable, true);
+  assert.match(formatCompare(bothMissing), /warn: 两份报告都无环境信息/);
 
   const declaredBefore = scorecard(environment());
   const declaredAfter = scorecard(environment({ modelsFileHash: null, unknown: ["modelsFileHash"] }));
