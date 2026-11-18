@@ -3,6 +3,27 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.12.0 — 2026-11-18
+
+- `mf scan` now extracts decorator-registered Python tools from pydantic-ai
+  (`@agent.tool`, `@agent.tool_plain`), OpenAI Agents (`@function_tool`, and
+  `@tool(name_override=…, description_override=…)`), and FastMCP
+  (`@mcp.tool()` / `@server.tool()`). Namespaced decorators require a matching
+  framework import in the same file; injected parameters (`RunContext`,
+  `RunContextWrapper`, `ToolContext`, or an unannotated `ctx`) are excluded
+  from the schema.
+- Parameter types that cannot be resolved statically (Pydantic models,
+  TypedDict, dataclasses) no longer fall back to `string`. They emit an empty
+  schema plus a tool-level `schemaNote: "unresolved-types: …"`, and `mf lint`
+  reports them as info `param-type-unresolved` instead of error
+  `param-type-missing`.
+- Name and description precedence: `name_override` → `name` → function name;
+  `description_override` → `description` → positional decorator string →
+  docstring. Existing LangChain `@tool` definitions also gain the override and
+  positional-string handling.
+- Static only: the scanner never imports or executes project code. Tests 232
+  (231 pass, 1 Windows symlink skip); golden corpus unchanged.
+
 ## 0.11.4 — 2026-11-18
 
 - `mf compare` now warns when **both** scorecards lack an `environment` block

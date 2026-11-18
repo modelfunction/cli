@@ -632,3 +632,28 @@ test("lint checks every occurrence of an optional parameter name", () => {
   assert.equal(findings.length, 1);
   assert.equal(findings[0].param, "title");
 });
+
+test("lint distinguishes missing param types from statically unresolved project classes", () => {
+  const suite = {
+    tools: [
+      {
+        name: "fetch_weather",
+        description: "Use when the user asks for the weather.",
+        parameters: { type: "object", properties: { location: {} }, required: ["location"] },
+        schemaNote: "unresolved-types: location"
+      },
+      {
+        name: "broken",
+        description: "Use when the user asks for a broken tool.",
+        parameters: { type: "object", properties: { payload: {} }, required: ["payload"] }
+      }
+    ]
+  };
+  const findings = lintSuite(suite).findings;
+  const unresolved = findings.filter((item) => item.code === "param-type-unresolved");
+  assert.equal(unresolved.length, 1);
+  assert.equal(unresolved[0].severity, "info");
+  assert.equal(unresolved[0].param, "location");
+  const missing = findings.filter((item) => item.code === "param-type-missing");
+  assert.deepEqual(missing.map((item) => item.tool), ["broken"]);
+});

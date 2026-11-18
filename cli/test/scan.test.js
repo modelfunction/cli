@@ -418,3 +418,129 @@ test("scan extracts registry.action decorators", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("scan extracts pydantic-ai and FastMCP namespaced tool decorators", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-agent-tools-"));
+  try {
+    await mkdir(join(root, "app"), { recursive: true });
+    await writeFile(
+      join(root, "app", "dice.py"),
+      [
+        "from pydantic_ai import Agent, RunContext",
+        "",
+        "agent = Agent('test')",
+        "",
+        "@agent.tool_plain",
+        "def roll_dice() -> str:",
+        '    """Roll a six-sided die and return the result."""',
+        '    return "4"',
+        "",
+        "@agent.tool",
+        "def get_player_name(ctx: RunContext[str]) -> str:",
+        '    """Get the player\'s name."""',
+        "    return ctx.deps"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "app", "notes.py"),
+      [
+        "from mcp.server.fastmcp import FastMCP",
+        "",
+        "mcp = FastMCP('demo')",
+        "",
+        "@mcp.tool()",
+        "def add(a: int, b: int) -> int:",
+        '    """Add two numbers."""',
+        "    return a + b"
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      join(root, "app", "unrelated.py"),
+      [
+        "@app.tool",
+        "def not_a_tool(x: str) -> str:",
+        '    """No framework import in this file."""',
+        "    return x"
+      ].join("\n"),
+      "utf8"
+    );
+
+    const report = await scanProject(root);
+    const names = report.tools.map((tool) => tool.name).sort();
+    assert.deepEqual(names, ["add", "get_player_name", "roll_dice"]);
+
+    const dice = report.tools.find((tool) => tool.name === "roll_dice");
+    assert.equal(dice.description, "Roll a six-sided die and return the result.");
+
+    const player = report.tools.find((tool) => tool.name === "get_player_name");
+    assert.deepEqual(player.parameters.properties, {}, "RunContext must not become a parameter");
+
+    const add = report.tools.find((tool) => tool.name === "add");
+    assert.deepEqual(add.parameters.required.sort(), ["a", "b"]);
+    assert.equal(add.parameters.properties.a.type, "number");
+    assert.equal(add.parameters.properties.b.type, "number");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scan handles openai-agents overrides, injected context and unresolved types", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-openai-agents-"));
+  try {
+    await writeFile(
+      join(root, "tools.py"),
+      [
+        "from agents import Agent, RunContextWrapper",
+        "from agents.decorators import tool, function_tool",
+        "",
+        "@tool",
+        "async def fetch_weather(location: Location) -> str:",
+        '    """Fetch the weather for a location."""',
+        '    return "sunny"',
+        "",
+        "@tool(",
+        '    name_override="fetch_data",',
+        '    description_override="Read a file from disk."',
+        ")",
+        "def read_file(ctx: RunContextWrapper[Any], path: str, directory: str | None = None) -> str:",
+        '    """Read the contents of a file."""',
+        '    return "x"',
+        "",
+        "@function_tool",
+        "def ping(url: str) -> str:",
+        '    """Ping a URL."""',
+        '    return "pong"',
+        "",
+        '@tool("Search the legacy index")',
+        "def legacy_search(q: str) -> str:",
+        '    """Docstring description should lose to the decorator string."""',
+        '    return ""'
+      ].join("\n"),
+      "utf8"
+    );
+
+    const report = await scanProject(root);
+    const names = report.tools.map((tool) => tool.name).sort();
+    assert.deepEqual(names, ["fetch_data", "fetch_weather", "legacy_search", "ping"]);
+
+    const weather = report.tools.find((tool) => tool.name === "fetch_weather");
+    assert.equal(weather.schemaNote, "unresolved-types: location");
+    assert.deepEqual(weather.parameters.properties.location, {});
+    const draft = buildSuiteDraft(report);
+    assert.equal(draft.tools.find((tool) => tool.name === "fetch_weather").schemaNote, "unresolved-types: location");
+
+    const read = report.tools.find((tool) => tool.name === "fetch_data");
+    assert.equal(read.description, "Read a file from disk.");
+    assert.deepEqual(Object.keys(read.parameters.properties).sort(), ["directory", "path"]);
+    assert.equal(read.parameters.properties.path.type, "string");
+    assert.equal(read.parameters.properties.directory.type, "string");
+    assert.deepEqual(read.parameters.required, ["path"]);
+
+    const legacy = report.tools.find((tool) => tool.name === "legacy_search");
+    assert.equal(legacy.description, "Search the legacy index");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
