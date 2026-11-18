@@ -9,6 +9,7 @@ docs/archive/**/feedback-*.zip
 .claude/
 用户反馈/
 *.tgz
+cli/templates/
 npm-debug.log*
 mf.suite.json
 mf.scan.json

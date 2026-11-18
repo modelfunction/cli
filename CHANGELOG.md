@@ -3,6 +3,24 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.11.4 — 2026-11-18
+
+- `mf compare` now warns when **both** scorecards lack an `environment` block
+  (single-sided missing already warned; both-sided used to pass silently). The
+  comparison stays allowed so pre-0.10 cards remain usable, but the warning
+  says version and registry attribution are unavailable and deltas are
+  descriptive only.
+- `environment.sampling` uses `retry` / `minIntervalMs`, aligning with the
+  `--retry` / `--min-interval` flags and the environment sidecar. Cards written
+  by 0.10–0.11.3 (`retries` / `minInterval`) are normalized during comparison,
+  so existing baselines stay comparable and do not need re-recording.
+- The npm tarball now ships `templates/` (CI and local-gate templates). A
+  `prepack` step copies them from the repository root; installed and `npx`
+  users can finally use the template paths referenced by the docs.
+- Documented that `retention: true` is a process marker excluded from the suite
+  fingerprint: adding it to an already-scored suite neither invalidates
+  baselines nor triggers fingerprint-based change gates.
+
 ## 0.11.3 — 2026-11-15
 
 - Retention set and rotation for Goodhart protection: cases accept

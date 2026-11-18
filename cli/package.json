@@ -1,6 +1,6 @@
 {
   "name": "modelfunction-cli",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "type": "module",
   "license": "MIT",
   "description": "Function-calling quality gate for AI agents: scan MCP tools/skills, lint description boundaries, and score model tool selection. Local-first, MCP-ready.",
@@ -27,6 +27,7 @@
     "mf.js",
     "lib",
     "scripts/calibrate.js",
+    "templates",
     "fixtures",
     "skills",
     "README.md",
@@ -42,6 +43,7 @@
     "eval": "node mf.js eval",
     "eval:mock": "node mf.js eval --models mock --show-cases",
     "pack:check": "npm pack --dry-run",
+    "prepack": "node scripts/pack-templates.js",
     "prepublishOnly": "npm test"
   },
   "types": "./lib/check.d.ts",

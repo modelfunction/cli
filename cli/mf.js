@@ -164,7 +164,7 @@ export async function runEval(options, io = console) {
     version: await readVersion(),
     sampling: {
       repeat: options.repeat ?? 1,
-      retries: options.retries ?? 2,
+      retry: options.retries ?? 2,
       minIntervalMs: options.minIntervalMs ?? 0
     }
   });

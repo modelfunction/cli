@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const COMPARED_FIELDS_IGNORED = new Set(["generatedAt", "unknown"]);
+// 0.10–0.11.3 emitted `retries` / `minInterval`; canonical names follow the
+// --retry / --min-interval flags and the environment sidecar.
+const SAMPLING_ALIASES = { retries: "retry", minInterval: "minIntervalMs" };
 
 export async function buildEnvironment({ modelsFile, version, sampling = {}, now = new Date() } = {}) {
   const unknown = [];
@@ -24,8 +27,8 @@ export async function buildEnvironment({ modelsFile, version, sampling = {}, now
     modelsFileHash,
     sampling: {
       repeat: sampling.repeat ?? 1,
-      retries: sampling.retries ?? null,
-      minIntervalMs: sampling.minIntervalMs ?? 0
+      retry: sampling.retry ?? sampling.retries ?? null,
+      minIntervalMs: sampling.minIntervalMs ?? sampling.minInterval ?? 0
     },
     unknown
   };
@@ -37,6 +40,7 @@ export function compareEnvironments(before, after, { crossEnv = false } = {}) {
   const warnings = [];
 
   if (!beforeCaptured && !afterCaptured) {
+    warnings.push("两份报告都无环境信息（0.10 之前评分卡）；mf 版本与 registry 归因不可用，指标差异仅作描述性参考");
     return {
       beforeCaptured,
       afterCaptured,
@@ -63,12 +67,14 @@ export function compareEnvironments(before, after, { crossEnv = false } = {}) {
     };
   }
 
+  const normalizedBefore = normalizeEnvironment(before);
+  const normalizedAfter = normalizeEnvironment(after);
   const declared = {
-    before: new Set(Array.isArray(before.unknown) ? before.unknown : []),
-    after: new Set(Array.isArray(after.unknown) ? after.unknown : [])
+    before: new Set((Array.isArray(before.unknown) ? before.unknown : []).map(normalizeFieldName)),
+    after: new Set((Array.isArray(after.unknown) ? after.unknown : []).map(normalizeFieldName))
   };
   const fields = new Set();
-  for (const env of [before, after]) {
+  for (const env of [normalizedBefore, normalizedAfter]) {
     for (const key of Object.keys(env)) {
       if (!COMPARED_FIELDS_IGNORED.has(key)) fields.add(key);
     }
@@ -85,8 +91,8 @@ export function compareEnvironments(before, after, { crossEnv = false } = {}) {
       });
       continue;
     }
-    const beforeValue = before[field] ?? null;
-    const afterValue = after[field] ?? null;
+    const beforeValue = normalizedBefore[field] ?? null;
+    const afterValue = normalizedAfter[field] ?? null;
     if (sameValue(beforeValue, afterValue)) continue;
     differences.push({ field, before: beforeValue, after: afterValue });
   }
@@ -127,6 +133,22 @@ export function formatEnvironmentDifferences(environment) {
 
 function isEnvironment(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeFieldName(name) {
+  return SAMPLING_ALIASES[name] ?? name;
+}
+
+function normalizeEnvironment(env) {
+  if (!isEnvironment(env.sampling)) return env;
+  const sampling = { ...env.sampling };
+  for (const [legacy, canonical] of Object.entries(SAMPLING_ALIASES)) {
+    if (sampling[canonical] === undefined && sampling[legacy] !== undefined) {
+      sampling[canonical] = sampling[legacy];
+    }
+    delete sampling[legacy];
+  }
+  return { ...env, sampling };
 }
 
 function sameValue(a, b) {
