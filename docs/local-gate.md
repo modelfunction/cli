@@ -71,7 +71,7 @@ templates\local\nightly.cmd
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MF_VERSION` | `0.13.0` | 固定版本，避免 npx 漂移 |
+| `MF_VERSION` | `0.13.1` | 固定版本，避免 npx 漂移 |
 | `MF_MODEL` | 空 | 显式钉死被测模型 id（推荐；只给 `--models-file` 是注册表，不保证选中） |
 | `MF_SUITE` | `mf.suite.json` | 套件 |
 | `MF_MODELS` | `mf.models.json` | 模型注册表 |

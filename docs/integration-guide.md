@@ -2,7 +2,7 @@
 
 `mf` 检查 Agent 的工具层，不碰提示词和业务代码：扫描工具/skill 定义，静态检查描述、参数和边界，需要证据时再跑真实模型评分卡。
 
-## 三种接入方式
+## 四种接入方式
 
 ### 1. GitHub Actions：零密钥静态门禁
 
@@ -11,8 +11,8 @@
 ```yaml
 - uses: actions/setup-node@v4
   with: { node-version: 20 }
-- run: npx -y modelfunction-cli@0.6.1 lint --suite mf.suite.json
-- run: npx -y modelfunction-cli@0.6.1 audit --suite mf.suite.json --out mf-audit.md
+- run: npx -y modelfunction-cli@0.13.1 lint --suite mf.suite.json
+- run: npx -y modelfunction-cli@0.13.1 audit --suite mf.suite.json --out mf-audit.md
 ```
 
 静态层不调用模型、不需要 secrets，fork PR 也能跑。先保持 advisory，等误报清零后再考虑拦截。
@@ -31,6 +31,21 @@ const result = check({ manifest: newTool, installed: existingTools });
 ```
 
 纯静态、毫秒级、不阻断；适合在插件/skill 安装时提示混淆对和必填参数来源问题。见 `cli/SCHEMA.md` §6。
+
+### 4. 直接探测运行中的 MCP server（无需源码）
+
+工具在运行时注册、静态扫描提不到时，直接连上 server 读 `tools/list`：
+
+```bash
+cat > .mcp.json <<'EOF'
+{"mcpServers":{"filesystem":{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}}}
+EOF
+npx -y modelfunction-cli@0.13.1 scan --probe --timeout 30000 --no-write
+```
+
+- stdio 与 streamable-HTTP 均可；env 只留键名、URL 去 userinfo/query/hash、headers 只留键名。
+- 0.13.1 起 Windows 上经 `cmd.exe /d /s /c` 启动 `npx`/`npm` 垫片（此前直接 spawn 会 ENOENT/EINVAL）。
+- 实测：filesystem server 16 个工具；去掉 `--no-write` 即生成 suite 草稿，补用例后可进 `eval`。
 
 ## 数据边界
 
