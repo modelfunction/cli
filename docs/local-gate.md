@@ -71,7 +71,8 @@ templates\local\nightly.cmd
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `MF_VERSION` | `0.11.3` | 固定版本，避免 npx 漂移 |
+| `MF_VERSION` | `0.13.0` | 固定版本，避免 npx 漂移 |
+| `MF_MODEL` | 空 | 显式钉死被测模型 id（推荐；只给 `--models-file` 是注册表，不保证选中） |
 | `MF_SUITE` | `mf.suite.json` | 套件 |
 | `MF_MODELS` | `mf.models.json` | 模型注册表 |
 | `MF_BASELINE` | `.mf/baseline.json` | 存在时自动加 `--baseline --fail-on-regression` |
@@ -124,7 +125,18 @@ RPM 受限的端点常见两类噪声：
 并用 `selectionAccuracyExcludingErrors` 单独看模型本身的表现；
 评分卡新增的 `retries` 汇总可以看到本轮实际发生了多少次重试。
 
-## 5. 与 Action 模板的对应
+## 5. 网络故障 ≠ 行为回归
+
+端点整段不可达时，所有用例都会落到 no-call，朴素门禁会把它读成「全量回归」；
+更隐蔽的是模型 id 与基线不一致时，回归判定可能被跳过并以 exit 0 收场（假绿）。
+两道防线：
+
+1. eval 显式传 `--models <id>`（模板里的 `MF_MODEL`）钉死被测模型。`--models-file`
+   只是注册表，不负责选择：环境里多一个无关 key，autoSelect 可能把流量导去别家。
+2. 信任退出码前先看评分卡的 `errorsByKind`：network / timeout 占多数时按基础设施
+   故障处理，不更新 `eval-state`、不重录基线；评分卡缺失同样不更新。
+
+## 6. 与 Action 模板的对应
 
 | `templates/ci/github-actions.yml` | 本地 |
 |---|---|
@@ -136,7 +148,7 @@ RPM 受限的端点常见两类噪声：
 | eval job：条件 `--baseline --fail-on-regression` | `nightly.*` 的 `[ -f baseline ]` |
 | eval job：scorecard summary | `.mf/nightly/scorecard.*.json` + `mf compare` |
 
-## 6. 注意
+## 7. 注意
 
 - 门禁是 advisory 还是 blocking 由你决定；`lint` 默认拦截，其余不拦截。
 - 基线要随 PR 更新，不要由定时任务自动改写，否则一次抖动会悄悄降低门槛。

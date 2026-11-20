@@ -3,6 +3,25 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.13.0 — 2026-11-20
+
+- The npm tarball now ships `docs/local-gate.md`. README has pointed to it
+  since 0.5.5, but only `templates/` was added to the package in 0.11.4, so
+  installed and `npx` users hit a dead link. `prepack` now copies both from
+  the repository root, and the release checklist verifies it.
+- `mf scan <path>` accepts the positional path as an alias for `--root`;
+  passing both is an error. Previously the positional was silently ignored
+  and the scan fell back to the current directory, producing a full tool list
+  for the wrong repository.
+- Local-gate templates: new `MF_MODEL` env var pins the model under test with
+  an explicit `--models <id>` (a `--models-file` registry alone does not decide
+  which model runs). Defaults for `MF_VERSION` in `templates/local/` moved from
+  `0.7.0` to the current release.
+- `docs/local-gate.md` gains a "network failure is not a behavior regression"
+  section: pin the model explicitly and classify `errorsByKind` network/timeout
+  as infrastructure before trusting the exit code. README documents running
+  `npm run calibrate` against the old pack before upgrading.
+
 ## 0.12.0 — 2026-11-18
 
 - `mf scan` now extracts decorator-registered Python tools from pydantic-ai

@@ -4,7 +4,7 @@ rem Point the scheduled task at this file after setting MODEL_API_KEY in the
 rem task environment (or in a wrapper script that is not committed).
 setlocal
 
-if "%MF_VERSION%"=="" set MF_VERSION=0.7.0
+if "%MF_VERSION%"=="" set MF_VERSION=0.13.0
 if "%MF_SUITE%"=="" set MF_SUITE=mf.suite.json
 if "%MF_MODELS%"=="" set MF_MODELS=mf.models.json
 if "%MF_NIGHTLY_DIR%"=="" set MF_NIGHTLY_DIR=.mf\nightly
@@ -31,6 +31,7 @@ for /f "delims=" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyM
 set MF_OUT=%MF_NIGHTLY_DIR%\scorecard.%MF_STAMP%.json
 set MF_ARGS=eval --suite "%MF_SUITE%" --models-file "%MF_MODELS%" --repeat %MF_REPEAT% --max-cost %MF_MAX_COST% --retry %MF_RETRY% --min-interval %MF_MIN_INTERVAL% --out "%MF_OUT%"
 if not "%MF_PROFILE%"=="" set MF_ARGS=%MF_ARGS% --profile "%MF_PROFILE%"
+if not "%MF_MODEL%"=="" set MF_ARGS=%MF_ARGS% --models "%MF_MODEL%"
 if exist "%MF_BASELINE%" (
   set MF_ARGS=%MF_ARGS% --baseline "%MF_BASELINE%" --fail-on-regression
 ) else (
