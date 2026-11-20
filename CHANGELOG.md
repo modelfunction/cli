@@ -3,6 +3,15 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.13.1 — 2026-11-20
+
+- `mf scan --probe` now works with `npx` / `npm` / `uvx` MCP configs on
+  Windows. Node cannot execute `.cmd`/`.bat` shims directly (`ENOENT` for
+  `npx`, `EINVAL` for `npx.cmd`), so stdio probes launch through
+  `cmd.exe /d /s /c` on Windows. Verified against
+  `@modelcontextprotocol/server-filesystem` (16 tools listed) and covered by a
+  Windows-only regression test.
+
 ## 0.13.0 — 2026-11-20
 
 - The npm tarball now ships `docs/local-gate.md`. README has pointed to it

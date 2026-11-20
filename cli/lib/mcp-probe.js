@@ -62,19 +62,39 @@ function normalizeTools(tools) {
     }));
 }
 
+function stdioSpawnSpec(server) {
+  const args = Array.isArray(server.args) ? server.args.map(String) : [];
+  if (process.platform !== "win32") {
+    return { command: server.command, args, options: {} };
+  }
+  // Node on Windows cannot execute .cmd/.bat shims directly (ENOENT for
+  // "npx", EINVAL for "npx.cmd"), and most MCP configs use npx/npm/uvx.
+  const quote = (value) => {
+    const text = String(value);
+    return text === "" || /[\s"&|<>^()]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    args: ["/d", "/s", "/c", [server.command, ...args].map(quote).join(" ")],
+    options: { windowsVerbatimArguments: true }
+  };
+}
+
 export async function probeStdioServer(server, { timeoutMs = 5_000, cwd } = {}) {
   if (!server?.command) {
     return { ok: false, error: "missing command" };
   }
 
+  const spec = stdioSpawnSpec(server);
   let child;
   try {
-    child = spawn(server.command, server.args ?? [], {
+    child = spawn(spec.command, spec.args, {
       cwd,
       env: { ...process.env, ...(server.env ?? {}) },
       stdio: ["pipe", "pipe", "pipe"],
       shell: false,
-      windowsHide: true
+      windowsHide: true,
+      ...spec.options
     });
   } catch (error) {
     return { ok: false, error: `spawn failed: ${error.message}` };

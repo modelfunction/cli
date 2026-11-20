@@ -53,6 +53,27 @@ test("probe reads tools/list over stdio", async () => {
   }
 });
 
+test(
+  "probe starts .cmd shims on Windows",
+  { skip: process.platform !== "win32" ? "Windows-only shim behavior" : false },
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "mf-probe-cmd-"));
+    try {
+      const serverPath = join(root, "server.mjs");
+      await writeFile(serverPath, ECHO_SERVER, "utf8");
+      const shim = join(root, "server.cmd");
+      await writeFile(shim, '@echo off\r\nnode "%~dp0server.mjs" %*\r\n', "utf8");
+
+      const result = await probeStdioServer({ command: shim, args: [] }, { timeoutMs: 5000 });
+
+      assert.equal(result.ok, true, result.error);
+      assert.equal(result.tools[0]?.name, "echo");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+);
+
 test("probe times out when the server never answers", async () => {
   const root = await mkdtemp(join(tmpdir(), "mf-probe-"));
   try {
