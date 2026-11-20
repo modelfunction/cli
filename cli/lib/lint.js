@@ -346,7 +346,13 @@ export function lintSuite(suite, { pairScope } = {}) {
           suggestion: `建议：\`${name}：____（格式：____；示例：____）\``
         });
       }
-      if (!schema?.type) {
+      // JSON Schema unions ($ref / anyOf / oneOf / allOf) and enum/const carry
+      // type information without a top-level `type`; real MCP servers emit
+      // nullable anyOf for optional parameters.
+      const typed = ["type", "enum", "const", "anyOf", "oneOf", "allOf", "$ref"].some(
+        (key) => schema?.[key] !== undefined
+      );
+      if (!typed) {
         const unresolved = typeof tool.schemaNote === "string" && tool.schemaNote.includes(name);
         if (unresolved) {
           add("info", "param-type-unresolved", tool.name, `参数 ${name} 的类型是项目类，静态扫描无法解析；请在运行时确认`, {

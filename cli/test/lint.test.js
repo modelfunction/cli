@@ -633,6 +633,31 @@ test("lint checks every occurrence of an optional parameter name", () => {
   assert.equal(findings[0].param, "title");
 });
 
+test("lint accepts union and reference schemas as typed", () => {
+  const suite = {
+    tools: [
+      {
+        name: "emulate_media",
+        description: "Use when the user asks to emulate media features.",
+        parameters: {
+          type: "object",
+          properties: {
+            colorScheme: {
+              description: "light or dark",
+              anyOf: [{ type: "string", enum: ["light", "dark"] }, { type: "null" }]
+            },
+            filter: { description: "filter", oneOf: [{ type: "string" }, { type: "number" }] },
+            target: { description: "target", $ref: "#/$defs/target" },
+            unknown: { description: "no type information" }
+          }
+        }
+      }
+    ]
+  };
+  const missing = lintSuite(suite).findings.filter((item) => item.code === "param-type-missing");
+  assert.deepEqual(missing.map((item) => item.param), ["unknown"]);
+});
+
 test("lint distinguishes missing param types from statically unresolved project classes", () => {
   const suite = {
     tools: [
