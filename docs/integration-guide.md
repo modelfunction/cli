@@ -11,8 +11,8 @@
 ```yaml
 - uses: actions/setup-node@v4
   with: { node-version: 20 }
-- run: npx -y modelfunction-cli@0.13.2 lint --suite mf.suite.json
-- run: npx -y modelfunction-cli@0.13.2 audit --suite mf.suite.json --out mf-audit.md
+- run: npx -y modelfunction-cli@0.13.3 lint --suite mf.suite.json
+- run: npx -y modelfunction-cli@0.13.3 audit --suite mf.suite.json --out mf-audit.md
 ```
 
 静态层不调用模型、不需要 secrets，fork PR 也能跑。先保持 advisory，等误报清零后再考虑拦截。
@@ -40,12 +40,13 @@ const result = check({ manifest: newTool, installed: existingTools });
 cat > .mcp.json <<'EOF'
 {"mcpServers":{"filesystem":{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}}}
 EOF
-npx -y modelfunction-cli@0.13.2 scan --probe --timeout 30000 --no-write
+npx -y modelfunction-cli@0.13.3 scan --probe --timeout 30000 --no-write
 ```
 
 - stdio 与 streamable-HTTP 均可；env 只留键名、URL 去 userinfo/query/hash、headers 只留键名。
 - 0.13.1 起 Windows 上经 `cmd.exe /d /s /c` 启动 `npx`/`npm` 垫片（此前直接 spawn 会 ENOENT/EINVAL）。
 - 实测：filesystem server 16 个工具；去掉 `--no-write` 即生成 suite 草稿，补用例后可进 `eval`。
+- 想要每周自动跑：复制 `templates/ci/mcp-audit.yml`，详见 `docs/mcp-audit.md`。
 
 ## 数据边界
 

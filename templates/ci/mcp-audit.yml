@@ -1,0 +1,38 @@
+# Weekly audit of a repository's MCP servers: probe tools/list, lint the
+# schemas/descriptions, and upload an audit report. Read-only: no tool calls,
+# no model calls, no secrets required.
+#
+# Copy to .github/workflows/mcp-audit.yml and keep .mcp.json in the repo.
+name: mcp-tool-audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * 1" # Mondays 02:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Probe MCP servers from .mcp.json
+        run: |
+          test -f .mcp.json || { echo "no .mcp.json in this repo"; exit 1; }
+          npx -y modelfunction-cli@0.13.3 scan --probe --timeout 60000 \
+            --out mf.suite.json --report mf.scan.json
+          npx -y modelfunction-cli@0.13.3 lint --suite mf.suite.json --json > mf-lint.json
+          npx -y modelfunction-cli@0.13.3 audit --suite mf.suite.json --out mf-audit.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcp-audit
+          path: |
+            mf-audit.md
+            mf-lint.json
+            mf.scan.json

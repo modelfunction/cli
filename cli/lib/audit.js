@@ -1,6 +1,7 @@
 // One static pass over a whole tool set: lint + cluster boundaries + case
 // coverage + mount checks. No model calls, no execution, no network.
 // The markdown output is meant to be forwarded as a trial deliverable.
+import { basename, relative } from "node:path";
 import { lintSuite, formatLint } from "./lint.js";
 import { clusterTools, formatClusters } from "./cluster.js";
 import { computeCoverage, formatCoverage } from "./cases.js";
@@ -107,13 +108,20 @@ function buildActions({ lint, clusters, coverage, profile }) {
   return actions;
 }
 
+// Reports get forwarded; keep local directory layout out of the markdown.
+function displayPath(path) {
+  if (!path) return "(内存)";
+  const rel = relative(process.cwd(), path);
+  return rel && !rel.startsWith("..") ? rel : basename(path);
+}
+
 export function formatAudit(report) {
   const { suite, lint, clusters, coverage, profiles, actions } = report;
   const lines = [
     `# ${suite.name} — 工具集审计`,
     "",
     `- 工具 ${suite.tools} · skills ${suite.skills} · 用例 ${suite.cases}（已复核 ${suite.reviewed}）`,
-    `- 文件：${suite.path ?? "(内存)"}`,
+    `- 文件：${displayPath(suite.path)}`,
     `- 纯静态：不调用模型、不执行工具、无网络`,
     "",
     "## 建议动作"
