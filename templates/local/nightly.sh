@@ -6,7 +6,7 @@
 # The API key itself comes from the environment, e.g. MODEL_API_KEY=...
 set -uo pipefail
 
-VERSION="${MF_VERSION:-0.7.0}"
+VERSION="${MF_VERSION:-0.13.0}"
 SUITE="${MF_SUITE:-mf.suite.json}"
 MODELS="${MF_MODELS:-mf.models.json}"
 OUT_DIR="${MF_NIGHTLY_DIR:-.mf/nightly}"
@@ -16,6 +16,7 @@ REPEAT="${MF_REPEAT:-3}"
 RETRY="${MF_RETRY:-4}"
 MIN_INTERVAL="${MF_MIN_INTERVAL:-1200}"
 PROFILE="${MF_PROFILE:-}"
+MODEL="${MF_MODEL:-}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$OUT_DIR"
@@ -41,6 +42,9 @@ args=(eval --suite "$SUITE" --models-file "$MODELS" --repeat "$REPEAT"
   --out "$out")
 if [ -n "$PROFILE" ]; then
   args+=(--profile "$PROFILE")
+fi
+if [ -n "$MODEL" ]; then
+  args+=(--models "$MODEL")
 fi
 if [ -f "$BASELINE" ]; then
   args+=(--baseline "$BASELINE" --fail-on-regression)

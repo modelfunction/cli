@@ -119,6 +119,7 @@ Eval options:
   --allow-side-effects  allow executing tools declaring write/external/unknown sideEffects
 
 Scan options:
+  mf scan [path]        positional path is the same as --root (do not pass both)
   --root <dir>          repository to scan (default: .)
   --from <file>         import tools from a module (export default [...] or export const tools)
   --probe               connect stdio or streamable-HTTP MCP servers and read tools/list
@@ -534,7 +535,7 @@ export async function runAblate(options, io = console) {
 }
 
 export async function runScan(options, io = console) {
-  const report = await scanProject(options.root ?? ".");
+  const report = await scanProject(scanRoot(options));
 
   if (options.from) {
     const tools = await loadAdapterTools(options.from);
@@ -595,6 +596,18 @@ export async function runScan(options, io = console) {
   }
 
   return report.tools.length > 0 || report.skills.length > 0 ? 0 : 3;
+}
+
+function scanRoot(options) {
+  const paths = options.positionals ?? [];
+  if (paths.length === 0) return resolve(options.root ?? ".");
+  if (paths.length > 1) {
+    throw new Error(`mf scan takes at most one path, got ${paths.length}: ${paths.join(", ")}`);
+  }
+  if (options.rootExplicit) {
+    throw new Error("mf scan: pass the path either positionally or with --root, not both");
+  }
+  return resolve(paths[0]);
 }
 
 export async function runCaseAdd(options, io = console) {
@@ -1227,6 +1240,7 @@ function parseArgs(argv) {
     out: null,
     failUnder: null,
     root: ".",
+    rootExplicit: false,
     report: null,
     noWrite: false,
     from: null,
@@ -1316,7 +1330,7 @@ function parseArgs(argv) {
       case "--show-cases": options.showCases = true; break;
       case "--json": options.json = true; break;
       case "--out": options.out = value(); break;
-      case "--root": options.root = resolve(value()); break;
+      case "--root": options.root = resolve(value()); options.rootExplicit = true; break;
       case "--from": options.from = value(); break;
       case "--probe": options.probe = true; break;
       case "--timeout": {

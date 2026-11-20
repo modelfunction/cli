@@ -10,6 +10,7 @@ docs/archive/**/feedback-*.zip
 用户反馈/
 *.tgz
 cli/templates/
+cli/docs/
 npm-debug.log*
 mf.suite.json
 mf.scan.json

@@ -40,6 +40,31 @@ test("scan finds function specs and frameworks in this repo", async () => {
   assert.equal(draft.cases.length, 0);
 });
 
+test("scan accepts a positional path as --root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mf-scan-pos-"));
+  try {
+    await writeFile(
+      join(root, "function.json"),
+      JSON.stringify({
+        name: "positional_tool",
+        description: "按位置参数扫描到的工具",
+        input: { type: "object", properties: { q: { type: "string" } } }
+      }),
+      "utf8"
+    );
+    const run = await runCli(["scan", root, "--json", "--no-write"]);
+    assert.equal(run.code, 0, run.stderr);
+    const payload = JSON.parse(run.stdout);
+    assert.ok(payload.report.tools.some((tool) => tool.name === "positional_tool"));
+
+    const both = await runCli(["scan", root, "--root", root, "--json", "--no-write"]);
+    assert.notEqual(both.code, 0);
+    assert.match(both.stderr, /either positionally or with --root/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("scan collects specs, OpenAPI, MCP configs, skills and code candidates", async () => {
   const root = await mkdtemp(join(tmpdir(), "mf-scan-"));
   try {
