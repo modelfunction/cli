@@ -3,6 +3,15 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.13.2 — 2026-11-20
+
+- `mf lint` no longer reports error `param-type-missing` for JSON Schema
+  properties that carry type information through `anyOf`, `oneOf`, `allOf`,
+  `$ref`, `enum`, or `const` without a top-level `type`. Real MCP servers emit
+  nullable `anyOf` for optional parameters; probing the official playwright-mcp
+  and memory servers produced 5 such false errors, now 0. Regression test
+  added; golden corpus unchanged.
+
 ## 0.13.1 — 2026-11-20
 
 - `mf scan --probe` now works with `npx` / `npm` / `uvx` MCP configs on
