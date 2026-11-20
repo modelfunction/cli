@@ -192,6 +192,10 @@ test("computeCoverage reports per-profile case counts and uncovered tools", () =
 
   const empty = computeCoverage({ ...suite, profiles: { idle: ["c"] } });
   assert.ok(empty.warnings.some((warning) => warning.includes("组 idle: 0 条正例")));
+
+  const bare = computeCoverage({ tools: [{ name: "z" }], cases: [], profiles: { idle: ["z"] } });
+  assert.ok(bare.warnings.some((warning) => warning.includes("组 idle: 0 条用例")));
+  assert.ok(!bare.warnings.some((warning) => warning.includes("只有负例")));
   assert.match(formatCoverage(report), /profiles（分组后/);
   assert.equal(computeCoverage({ tools: suite.tools, cases: suite.cases }).profiles, null);
 });
@@ -279,7 +283,8 @@ test("coverage and lint accept a scan draft with no cases yet", async () => {
     assert.equal(await runCoverage({ suite: suitePath, json: true }, io), 0);
     const report = JSON.parse(lines.join("\n"));
     assert.equal(report.total, 0);
-    assert.ok(report.warnings.some((warning) => warning.includes("summarize: 0 条用例")));
+    assert.ok(report.warnings.some((warning) => warning.includes("1 个工具都还没有用例")));
+    assert.ok(!report.warnings.some((warning) => warning.includes("summarize: 0 条用例")));
 
     lines.length = 0;
     assert.equal(await runLint({ suite: suitePath, json: true }, io), 0);

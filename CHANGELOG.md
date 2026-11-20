@@ -3,6 +3,17 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.13.3 — 2026-11-20
+
+- `mf audit` no longer emits a "0 条用例" warning per tool when the suite has
+  no cases at all; one summary line replaces the flood, and a group with
+  neither positives nor negatives says "0 条用例" instead of "只有负例".
+  Probe audits of external MCP servers are readable now.
+- `mf audit` markdown prints a relative path (or basename) instead of the
+  absolute local path, since reports are meant to be forwarded.
+- Ships `templates/ci/mcp-audit.yml` (weekly probe → lint → audit workflow)
+  and `docs/mcp-audit.md`; both use the read-only `tools/list` path.
+
 ## 0.13.2 — 2026-11-20
 
 - `mf lint` no longer reports error `param-type-missing` for JSON Schema

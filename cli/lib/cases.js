@@ -161,13 +161,17 @@ export function computeCoverage(suite) {
   const negativeRatio = total ? negative / total : 0;
   const warnings = [];
 
-  for (const tool of tools) {
-    if (tool.total === 0) warnings.push(`${tool.name}: 0 条用例`);
-    else if (tool.missing > 0) warnings.push(`${tool.name}: ${tool.total}/${MIN_CASES_PER_TOOL} 条，缺 ${tool.missing} 条`);
-    if (tool.total > 0 && tool.withArgs === 0) warnings.push(`${tool.name}: 没有校验参数的用例`);
-  }
-  if (negativeRatio < MIN_NEGATIVE_RATIO) {
-    warnings.push(`负例占比 ${Math.round(negativeRatio * 100)}% < ${Math.round(MIN_NEGATIVE_RATIO * 100)}%`);
+  if (total === 0) {
+    warnings.push(`${tools.length} 个工具都还没有用例；补用例后覆盖率统计才有意义`);
+  } else {
+    for (const tool of tools) {
+      if (tool.total === 0) warnings.push(`${tool.name}: 0 条用例`);
+      else if (tool.missing > 0) warnings.push(`${tool.name}: ${tool.total}/${MIN_CASES_PER_TOOL} 条，缺 ${tool.missing} 条`);
+      if (tool.total > 0 && tool.withArgs === 0) warnings.push(`${tool.name}: 没有校验参数的用例`);
+    }
+    if (negativeRatio < MIN_NEGATIVE_RATIO) {
+      warnings.push(`负例占比 ${Math.round(negativeRatio * 100)}% < ${Math.round(MIN_NEGATIVE_RATIO * 100)}%`);
+    }
   }
   if (unreviewed > 0) warnings.push(`${unreviewed} 条未复核用例不计入正式分数`);
 
@@ -180,7 +184,13 @@ export function computeCoverage(suite) {
   const profiles = profileList ? profileCaseCoverage(profileList, suite.cases) : null;
   if (profiles) {
     for (const row of profiles) {
-      if (row.cases === 0) warnings.push(`组 ${row.name}: 0 条正例（只有负例），该组工具没被真正测试`);
+      if (row.cases === 0) {
+        warnings.push(
+          row.negatives > 0
+            ? `组 ${row.name}: 0 条正例（只有负例），该组工具没被真正测试`
+            : `组 ${row.name}: 0 条用例`
+        );
+      }
       else if (row.missing.length > 0) {
         warnings.push(`组 ${row.name}: 工具 ${row.missing.join(", ")} 没有对应用例`);
       }

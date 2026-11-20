@@ -21,3 +21,4 @@ function copyDoc(name) {
 copyDir("templates");
 rmSync(resolve(cliRoot, "docs"), { recursive: true, force: true });
 copyDoc("local-gate.md");
+copyDoc("mcp-audit.md");
