@@ -44,7 +44,7 @@ inputs:
     default: "true"
   version:
     description: modelfunction-cli version to run.
-    default: "0.13.3"
+    default: "0.14.0"
 
 outputs:
   scorecard:

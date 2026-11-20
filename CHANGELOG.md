@@ -3,6 +3,18 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.14.0 — 2026-11-20
+
+- New `mf agree --a <labels.json> --b <labels.json>`: double-annotation
+  reliability for `expectedTool`. Reports raw agreement, Cohen's kappa,
+  one-sided ids, per-case disagreements, an optional suite-gap report
+  (`--suite`), and `--min-agreement` / `--min-kappa` thresholds (exit 2).
+  Accepts `{ annotator, labels }`, a plain map, or `[{ id, expectedTool }]`.
+  Static: no model calls, no network.
+- `docs/annotation-agreement.md` documents the format, kappa bands, and the
+  two-annotator → arbitrate → `mf case add --reviewed` workflow. The doc ships
+  in the package.
+
 ## 0.13.3 — 2026-11-20
 
 - `mf audit` no longer emits a "0 条用例" warning per tool when the suite has

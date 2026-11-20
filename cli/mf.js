@@ -20,6 +20,7 @@ import { checkSandbox, formatSandboxReport } from "./lib/sandbox-check.js";
 import { compareScorecards, formatCompare, regressionGate } from "./lib/compare.js";
 import { buildEnvironment } from "./lib/environment.js";
 import { replayScorecard, formatReplay } from "./lib/replay.js";
+import { loadAnnotations, computeAgreement, formatAgreement } from "./lib/agreement.js";
 import { analyzeAblation, formatAblation } from "./lib/ablate.js";
 import { clusterTools, formatClusters } from "./lib/cluster.js";
 import {
@@ -81,6 +82,8 @@ Usage:
   mf check (--manifest <file> | --manifests <file>) [--installed <file>] [--json]  # 安装门禁：新能力 × 已装能力（--manifests 支持一包）
   mf compare <before.json> <after.json> [--fail-on-regression] [--cross-env] [--json]
   mf replay <scorecard.json...> --suite <suite.json> [--json] [--out <file>]
+  mf agree --a <labels.json> --b <labels.json> [--suite <suite.json>] [--min-agreement <r>] [--min-kappa <k>] [--json]
+      # double annotation: raw agreement + Cohen's kappa + disagreements to arbitrate
   mf ablate --tool <name> [--suite <file>] [--profile <group>] [--models <ids>] [--max-cost <amount>] [--max-tokens <n>] [--progress] [--json]
   mf cluster [--suite <file>] [--threshold <0.5>] [--max-size <10>] [--out <file>] [--json]  # 建议挂载分组 + 同族候选
   mf exec --entry <file> (--input <json> | --input-json <json>) [--runtime node|python] [--python <cmd>] [--export run] [--allow-read <paths>] [--allow-write <paths>] [--allow-net <hosts>] [--timeout <ms>] [--warmup <n>] [--json]
@@ -117,6 +120,13 @@ Eval options:
   --execute             run toolInput and assert expect (needs --entry or suite.execution.entry)
   --exec-timeout <ms>   per execution timeout (suite.execution.timeoutMs or 10000)
   --allow-side-effects  allow executing tools declaring write/external/unknown sideEffects
+
+Agree options:
+  --a <file>            first annotator's labels: {"annotator":"A","labels":{"caseId":"tool"|null}}
+  --b <file>            second annotator's labels (same format, or [{id, expectedTool}])
+  --suite <file>        optional: report suite ids missing from both annotations
+  --min-agreement <r>   exit 2 when raw agreement is below r (0-1)
+  --min-kappa <k>       exit 2 when Cohen's kappa is below k (-1..1)
 
 Scan options:
   mf scan [path]        positional path is the same as --root (do not pass both)
@@ -608,6 +618,38 @@ function scanRoot(options) {
     throw new Error("mf scan: pass the path either positionally or with --root, not both");
   }
   return resolve(paths[0]);
+}
+
+export async function runAgree(options, io = console) {
+  if (!options.aFile || !options.bFile) {
+    throw new Error("mf agree needs --a <file> and --b <file>");
+  }
+  const first = await loadAnnotations(options.aFile);
+  const second = await loadAnnotations(options.bFile);
+  let suiteIds = null;
+  if (options.suiteExplicit) {
+    const suite = await loadSuite(options.suite);
+    suiteIds = suite.cases.map((item) => item.id);
+  }
+  const report = computeAgreement(first, second, { suiteIds });
+  io.log(options.json ? JSON.stringify(report, null, 2) : formatAgreement(report));
+
+  const failures = [];
+  if (options.minAgreement !== null) {
+    if (report.agreementRate === null) failures.push("no paired annotations");
+    else if (report.agreementRate < options.minAgreement) {
+      failures.push(`agreement ${(report.agreementRate * 100).toFixed(1)}% < ${(options.minAgreement * 100).toFixed(1)}%`);
+    }
+  }
+  if (options.minKappa !== null) {
+    if (report.kappa === null) failures.push("kappa undefined (expected agreement is 1)");
+    else if (report.kappa < options.minKappa) failures.push(`kappa ${report.kappa.toFixed(2)} < ${options.minKappa}`);
+  }
+  if (failures.length === 0) return 0;
+  const line = `fail: ${failures.join("; ")}`;
+  if (typeof io.error === "function") io.error(line);
+  else io.log(line);
+  return 2;
 }
 
 export async function runCaseAdd(options, io = console) {
@@ -1272,6 +1314,11 @@ function parseArgs(argv) {
     allowNet: [],
     passEnv: [],
     warmup: 0,
+    aFile: null,
+    bFile: null,
+    minAgreement: null,
+    minKappa: null,
+    suiteExplicit: false,
     positionals: []
   };
 
@@ -1284,7 +1331,21 @@ function parseArgs(argv) {
       return next;
     };
     switch (arg) {
-      case "--suite": options.suite = resolve(value()); break;
+      case "--suite": options.suite = resolve(value()); options.suiteExplicit = true; break;
+      case "--a": options.aFile = resolve(value()); break;
+      case "--b": options.bFile = resolve(value()); break;
+      case "--min-agreement": {
+        const raw = Number(value());
+        if (!Number.isFinite(raw) || raw < 0 || raw > 1) throw new Error("--min-agreement expects a ratio between 0 and 1");
+        options.minAgreement = raw;
+        break;
+      }
+      case "--min-kappa": {
+        const raw = Number(value());
+        if (!Number.isFinite(raw) || raw < -1 || raw > 1) throw new Error("--min-kappa expects a value between -1 and 1");
+        options.minKappa = raw;
+        break;
+      }
       case "--models": options.models = splitList(value()); break;
       case "--models-file": options.modelsFile = resolve(value()); break;
       case "--case": options.cases = (options.cases ?? []).concat(splitList(value())); break;
@@ -1523,7 +1584,7 @@ if (isMain) {
     }
   } else if (argv.length === 0 || argv[0] === "help" || argv[0] === "-h" || argv[0] === "--help") {
     process.stdout.write(USAGE);
-  } else if (!["eval", "scan", "case", "coverage", "audit", "lint", "check", "ablate", "cluster", "exec", "replay"].includes(argv[0])) {
+  } else if (!["eval", "scan", "case", "coverage", "audit", "lint", "check", "ablate", "cluster", "exec", "replay", "agree"].includes(argv[0])) {
     process.stderr.write(`unknown command "${argv[0]}"\n\n${USAGE}`);
     process.exit(1);
   } else if (argv[0] === "case" && argv[1] !== "add") {
@@ -1559,7 +1620,9 @@ if (isMain) {
                     ? await runExec(options)
                     : argv[0] === "replay"
                       ? await runReplay(options)
-                      : await runEval(options);
+                      : argv[0] === "agree"
+                        ? await runAgree(options)
+                        : await runEval(options);
       process.exit(code);
     } catch (error) {
       process.stderr.write(`${redactText(error?.message ?? error)}\n`);
