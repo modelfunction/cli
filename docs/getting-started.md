@@ -9,7 +9,7 @@
 - 一个 OpenAI 兼容的模型端点与 Key（DeepSeek / Qwen / GLM / SiliconFlow / OpenAI，或本地 Ollama）
 
 ```bash
-npx -y modelfunction-cli@0.14.0 --version
+npx -y modelfunction-cli@0.15.0 --version
 ```
 
 可选：装成本地依赖，启动更快
@@ -63,7 +63,9 @@ export default [
 npx mf scan --root . --from ./mf.tools.mjs
 ```
 
-产物：`mf.suite.json`（工具 + 空用例）与 `mf.scan.json`（来源与置信度）。
+产物：`mf.suite.json`（工具 + 空用例）与 `mf.scan.json`（来源与置信度），默认写在
+`--root` 目录下（0.15.0 起，不再落到当前工作目录）；显式 `--out` / `--report`
+的相对路径仍按当前工作目录解析。
 
 ## 2. 写用例（交给你或你的编码 Agent）
 
@@ -155,7 +157,7 @@ npx mf ablate --suite mf.suite.json --profile screening \
   "mcpServers": {
     "modelfunction": {
       "command": "npx",
-      "args": ["-y", "modelfunction-cli@0.14.0", "mcp"]
+      "args": ["-y", "modelfunction-cli@0.15.0", "mcp"]
     }
   }
 }

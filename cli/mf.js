@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
-import { basename, dirname, extname, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSuite, toModelTools } from "./lib/suite.js";
 import { scoreModel, pickRepresentative, pct, costOf, tokensOf } from "./lib/score.js";
@@ -134,8 +134,8 @@ Scan options:
   --from <file>         import tools from a module (export default [...] or export const tools)
   --probe               connect stdio or streamable-HTTP MCP servers and read tools/list
   --timeout <ms>        probe timeout per server (default: 5000)
-  --out <file>          suite draft to write (default: mf.suite.json)
-  --report <file>       scan report to write (default: mf.scan.json)
+  --out <file>          suite draft to write (default: <root>/mf.suite.json)
+  --report <file>       scan report to write (default: <root>/mf.scan.json)
   --no-write            print only, do not write files
 
 Env keys: DEEPSEEK_API_KEY, DASHSCOPE_API_KEY, ZHIPU_API_KEY, OPENAI_API_KEY, SILICONFLOW_API_KEY
@@ -545,7 +545,8 @@ export async function runAblate(options, io = console) {
 }
 
 export async function runScan(options, io = console) {
-  const report = await scanProject(scanRoot(options));
+  const root = scanRoot(options);
+  const report = await scanProject(root);
 
   if (options.from) {
     const tools = await loadAdapterTools(options.from);
@@ -596,8 +597,8 @@ export async function runScan(options, io = console) {
   io.log(formatScanSummary(report));
 
   if (!options.noWrite) {
-    const suitePath = resolve(options.out ?? "mf.suite.json");
-    const reportPath = resolve(options.report ?? "mf.scan.json");
+    const suitePath = options.out ? resolve(options.out) : join(root, "mf.suite.json");
+    const reportPath = options.report ? resolve(options.report) : join(root, "mf.scan.json");
     await writeFileAtomic(suitePath, JSON.stringify(draft, null, 2));
     await writeFileAtomic(reportPath, JSON.stringify(redactReport(report), null, 2));
     io.log("");
