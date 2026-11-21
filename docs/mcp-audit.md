@@ -7,14 +7,20 @@
 
 ```bash
 # 仓库根目录放 .mcp.json（同 Claude Code / Cursor 的格式）
-npx -y modelfunction-cli@0.14.0 scan --probe --timeout 60000
-npx -y modelfunction-cli@0.14.0 lint --suite mf.suite.json --json > mf-lint.json
-npx -y modelfunction-cli@0.14.0 audit --suite mf.suite.json --out mf-audit.md
+npx -y modelfunction-cli@0.15.0 scan --probe --timeout 120000
+npx -y modelfunction-cli@0.15.0 lint --suite mf.suite.json --json > mf-lint.json
+npx -y modelfunction-cli@0.15.0 audit --suite mf.suite.json --out mf-audit.md
 ```
 
 `scan --probe` 支持 stdio 与 streamable-HTTP；env 只保留键名、URL 去掉
 userinfo/query/hash、headers 只保留键名。Windows 上 0.13.1 起经
 `cmd.exe /d /s /c` 启动 `npx`/`npm` 垫片。
+
+**冷启动**：`npx`/`uvx` 型 stdio server 首次启动要先下载依赖，60 秒可能不够
+（实测 uvx 冷启动报 `timeout after 60000ms`，热缓存后正常）。模板默认
+`--timeout 120000`；本地已预装或 CI 缓存命中时可收紧到 30000–60000。
+超时只把该 server 记为失败探测，不影响其他 server，报告里能直接看出是哪台
+没起来。
 
 ## CI 模板
 

@@ -24,10 +24,11 @@ jobs:
       - name: Probe MCP servers from .mcp.json
         run: |
           test -f .mcp.json || { echo "no .mcp.json in this repo"; exit 1; }
-          npx -y modelfunction-cli@0.14.0 scan --probe --timeout 60000 \
+          # npx/uvx servers may download packages on first run; 120s covers cold start
+          npx -y modelfunction-cli@0.15.0 scan --probe --timeout 120000 \
             --out mf.suite.json --report mf.scan.json
-          npx -y modelfunction-cli@0.14.0 lint --suite mf.suite.json --json > mf-lint.json
-          npx -y modelfunction-cli@0.14.0 audit --suite mf.suite.json --out mf-audit.md
+          npx -y modelfunction-cli@0.15.0 lint --suite mf.suite.json --json > mf-lint.json
+          npx -y modelfunction-cli@0.15.0 audit --suite mf.suite.json --out mf-audit.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:

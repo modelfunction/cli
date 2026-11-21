@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -10,12 +11,13 @@ import { scanProject, buildSuiteDraft, scanPythonClassTools } from "../lib/scan.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MF = resolve(HERE, "../mf.js");
 
-function runCli(args, env = {}) {
+function runCli(args, env = {}, options = {}) {
   return new Promise((resolvePromise) => {
     const child = spawn(process.execPath, [MF, ...args], {
       env: { ...process.env, MF_NO_USAGE: "1", ...env },
       stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      ...(options.cwd ? { cwd: options.cwd } : {})
     });
     let stdout = "";
     let stderr = "";
@@ -62,6 +64,43 @@ test("scan accepts a positional path as --root", async () => {
     assert.match(both.stderr, /either positionally or with --root/);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("scan writes default artifacts under --root, not the working directory", async () => {
+  const base = await mkdtemp(join(tmpdir(), "mf-scan-out-"));
+  const root = join(base, "project");
+  const cwd = join(base, "elsewhere");
+  await mkdir(root, { recursive: true });
+  await mkdir(cwd, { recursive: true });
+  try {
+    await writeFile(
+      join(root, "function.json"),
+      JSON.stringify({
+        name: "root_tool",
+        description: "放在被扫目录里的工具",
+        input: { type: "object", properties: { q: { type: "string" } } }
+      }),
+      "utf8"
+    );
+    const run = await runCli(["scan", "--root", root], {}, { cwd });
+    assert.equal(run.code, 0, run.stderr);
+    assert.ok(existsSync(join(root, "mf.suite.json")), "suite draft should land in --root");
+    assert.ok(existsSync(join(root, "mf.scan.json")), "scan report should land in --root");
+    assert.ok(!existsSync(join(cwd, "mf.suite.json")), "must not write into the working directory");
+    assert.ok(!existsSync(join(cwd, "mf.scan.json")), "must not write into the working directory");
+    assert.ok(run.stdout.includes(join(root, "mf.suite.json")), run.stdout);
+
+    const explicit = await runCli(
+      ["scan", "--root", root, "--out", "custom.suite.json", "--report", "custom.scan.json"],
+      {},
+      { cwd }
+    );
+    assert.equal(explicit.code, 0, explicit.stderr);
+    assert.ok(existsSync(join(cwd, "custom.suite.json")), "explicit --out stays relative to the working directory");
+    assert.ok(existsSync(join(cwd, "custom.scan.json")), "explicit --report stays relative to the working directory");
+  } finally {
+    await rm(base, { recursive: true, force: true });
   }
 });
 

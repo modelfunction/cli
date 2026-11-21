@@ -3,6 +3,18 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.15.0 — 2026-11-21
+
+- BREAKING (pre-1.0): `mf scan` now writes its default artifacts
+  (`mf.suite.json`, `mf.scan.json`) next to the scanned project — under the
+  `--root` / positional path — instead of the current working directory.
+  Running `mf scan --root ../agent` from inside a repo no longer drops two
+  files into your repo root. Explicit `--out` / `--report` are unchanged and
+  still resolve relative to the working directory; `--no-write` unchanged.
+- `docs/mcp-audit.md` and `templates/ci/mcp-audit.yml`: probe timeout raised
+  to `120000` ms with a cold-start note — `npx`/`uvx` servers download
+  packages on first run and 60 s can elapse before `tools/list` responds.
+
 ## 0.14.0 — 2026-11-20
 
 - New `mf agree --a <labels.json> --b <labels.json>`: double-annotation
