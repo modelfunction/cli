@@ -20,7 +20,8 @@ test("agreement reports raw rate and Cohen's kappa", () => {
   assert.equal(report.agreementRate, 0.75);
   assert.ok(Math.abs(report.kappa - 7 / 11) < 1e-9);
   assert.deepEqual(report.disagreements, [{ id: "c2", a: "x", b: "y" }]);
-  assert.match(formatAgreement(report), /rate 75\.0% · kappa 0\.64/);
+  assert.deepEqual(report.coverage, { paired: 4, total: 4, rate: 1 });
+  assert.match(formatAgreement(report), /rate 75\.0% · coverage 4\/4 \(100\.0%\) · kappa 0\.64/);
 });
 
 test("agreement flags one-sided ids and suite gaps", () => {
@@ -33,7 +34,22 @@ test("agreement flags one-sided ids and suite gaps", () => {
   assert.deepEqual(report.onlyB, ["c3"]);
   assert.deepEqual(report.missingFromSuite, ["c4"]);
   assert.deepEqual(report.unknownIds, []);
+  assert.deepEqual(report.coverage, { paired: 1, total: 4, rate: 0.25 });
   assert.ok(report.warnings.some((warning) => warning.includes("c4")));
+});
+
+test("coverage exposes sampled rotation cards next to a full rate", () => {
+  const suiteIds = Array.from({ length: 24 }, (_, index) => `c${index + 1}`);
+  const baseline = suiteIds.map((id) => [id, "x"]);
+  const sampled = suiteIds.slice(0, 8).map((id) => [id, "x"]);
+  const report = computeAgreement(
+    { name: "baseline-card", labels: new Map(baseline) },
+    { name: "nightly-card", labels: new Map(sampled) },
+    { suiteIds }
+  );
+  assert.equal(report.agreementRate, 1);
+  assert.deepEqual(report.coverage, { paired: 8, total: 24, rate: 8 / 24 });
+  assert.match(formatAgreement(report), /rate 100\.0% · coverage 8\/24 \(33\.3%\)/);
 });
 
 test("loadAnnotations accepts wrapped labels and array entries", async () => {
@@ -74,6 +90,7 @@ test("runAgree exits 2 below thresholds", async () => {
     const ok = await runAgree({ aFile: a, bFile: b, json: false, minAgreement: 0, minKappa: null }, io);
     assert.equal(ok, 0);
     assert.ok(lines.some((line) => line.includes("rate 50.0%")));
+    assert.ok(lines.some((line) => line.includes("coverage 2/2 (100.0%)")));
 
     const failed = await runAgree({ aFile: a, bFile: b, json: false, minAgreement: 0.8, minKappa: 0.6 }, io);
     assert.equal(failed, 2);

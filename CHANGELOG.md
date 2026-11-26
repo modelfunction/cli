@@ -3,6 +3,16 @@
 All notable changes to `modelfunction-cli` are documented here. The suite
 and scorecard contracts are versioned in `cli/SCHEMA.md`; v1 only adds fields.
 
+## 0.16.0 — 2026-11-26
+
+- `mf agree` now reports coverage next to the agreement rate: paired ids
+  over the suite size when `--suite` is given, else over the union of
+  annotated ids. A sampled rotation card (8 of 24 cases) reads
+  `rate 100.0% · coverage 8/24 (33.3%)` instead of a bare 100%.
+  JSON gains `coverage: { paired, total, rate }`, null when nothing is
+  countable. Exit codes are unchanged — gating stays with
+  `--min-agreement` / `--min-kappa`, no new coverage gate.
+
 ## 0.15.0 — 2026-11-21
 
 - BREAKING (pre-1.0): `mf scan` now writes its default artifacts
