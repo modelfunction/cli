@@ -11,8 +11,8 @@
 ```yaml
 - uses: actions/setup-node@v4
   with: { node-version: 20 }
-- run: npx -y modelfunction-cli@0.15.0 lint --suite mf.suite.json
-- run: npx -y modelfunction-cli@0.15.0 audit --suite mf.suite.json --out mf-audit.md
+- run: npx -y modelfunction-cli@0.16.0 lint --suite mf.suite.json
+- run: npx -y modelfunction-cli@0.16.0 audit --suite mf.suite.json --out mf-audit.md
 ```
 
 静态层不调用模型、不需要 secrets，fork PR 也能跑。先保持 advisory，等误报清零后再考虑拦截。
@@ -40,7 +40,7 @@ const result = check({ manifest: newTool, installed: existingTools });
 cat > .mcp.json <<'EOF'
 {"mcpServers":{"filesystem":{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}}}
 EOF
-npx -y modelfunction-cli@0.15.0 scan --probe --timeout 120000 --no-write
+npx -y modelfunction-cli@0.16.0 scan --probe --timeout 120000 --no-write
 ```
 
 - stdio 与 streamable-HTTP 均可；env 只留键名、URL 去 userinfo/query/hash、headers 只留键名。

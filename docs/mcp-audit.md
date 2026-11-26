@@ -7,9 +7,9 @@
 
 ```bash
 # 仓库根目录放 .mcp.json（同 Claude Code / Cursor 的格式）
-npx -y modelfunction-cli@0.15.0 scan --probe --timeout 120000
-npx -y modelfunction-cli@0.15.0 lint --suite mf.suite.json --json > mf-lint.json
-npx -y modelfunction-cli@0.15.0 audit --suite mf.suite.json --out mf-audit.md
+npx -y modelfunction-cli@0.16.0 scan --probe --timeout 120000
+npx -y modelfunction-cli@0.16.0 lint --suite mf.suite.json --json > mf-lint.json
+npx -y modelfunction-cli@0.16.0 audit --suite mf.suite.json --out mf-audit.md
 ```
 
 `scan --probe` 支持 stdio 与 streamable-HTTP；env 只保留键名、URL 去掉

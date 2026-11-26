@@ -128,6 +128,9 @@ Agree options:
   --min-agreement <r>   exit 2 when raw agreement is below r (0-1)
   --min-kappa <k>       exit 2 when Cohen's kappa is below k (-1..1)
 
+  Output always includes coverage: paired / suite size with --suite, else
+  paired / union of annotated ids -- rate alone can hide a sampled card.
+
 Scan options:
   mf scan [path]        positional path is the same as --root (do not pass both)
   --root <dir>          repository to scan (default: .)

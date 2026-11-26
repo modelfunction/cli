@@ -70,6 +70,17 @@ export function computeAgreement(first, second, { suiteIds = null } = {}) {
   }
 
   const n = paired.length;
+  let coveragePaired = n;
+  let coverageTotal = ids.length;
+  if (suiteIds) {
+    const suiteSet = new Set(suiteIds);
+    coverageTotal = suiteSet.size;
+    coveragePaired = paired.filter((id) => suiteSet.has(id)).length;
+  }
+  const coverage =
+    coverageTotal > 0
+      ? { paired: coveragePaired, total: coverageTotal, rate: coveragePaired / coverageTotal }
+      : null;
   const agreementRate = n > 0 ? agree / n : null;
   let kappa = null;
   if (n > 0) {
@@ -104,6 +115,7 @@ export function computeAgreement(first, second, { suiteIds = null } = {}) {
     agree,
     agreementRate,
     kappa,
+    coverage,
     disagreements,
     onlyA,
     onlyB,
@@ -117,12 +129,15 @@ export function formatAgreement(report) {
   const a = report.annotations.a ?? "A";
   const b = report.annotations.b ?? "B";
   const lines = [`annotations: ${a} × ${b}`];
+  const coverage = report.coverage
+    ? ` · coverage ${report.coverage.paired}/${report.coverage.total} (${(report.coverage.rate * 100).toFixed(1)}%)`
+    : "";
   if (report.paired === 0) {
-    lines.push("paired 0 · 两份标注没有共同 id，无法计算一致性");
+    lines.push(`paired 0 · 两份标注没有共同 id，无法计算一致性${coverage}`);
   } else {
     const rate = `${(report.agreementRate * 100).toFixed(1)}%`;
     const kappa = report.kappa === null ? "undefined" : report.kappa.toFixed(2);
-    lines.push(`paired ${report.paired} · agree ${report.agree} · rate ${rate} · kappa ${kappa}`);
+    lines.push(`paired ${report.paired} · agree ${report.agree} · rate ${rate}${coverage} · kappa ${kappa}`);
   }
   if (report.disagreements.length > 0) {
     lines.push(`disagreements: ${report.disagreements.length}`);

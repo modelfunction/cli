@@ -25,7 +25,7 @@ mf agree --a alice.json --b bob.json --min-agreement 0.9 --min-kappa 0.6
 
 ```
 annotations: alice × bob
-paired 18 · agree 16 · rate 88.9% · kappa 0.71
+paired 18 · agree 16 · rate 88.9% · coverage 18/20 (90.0%) · kappa 0.71
 disagreements: 2
   c05: alice=create_html_report ≠ bob=file_read
 ```
@@ -34,6 +34,19 @@ disagreements: 2
 - `--min-agreement` / `--min-kappa`：低于阈值时退出码 2，可用于 CI 或发版门；
   默认 exit 0，只报告不阻断。
 - 只有一边标注的 id 不计入一致性，会单独列出。
+
+## coverage：这个一致率看了多少用例
+
+一致率的分母是 **paired**（两边都标注的 id），不是套件全量。抽样子集或轮换卡
+只覆盖一部分用例时，单独看 100% 会掩盖「只看了 1/3」。因此输出里 coverage 与
+rate 同屏：
+
+- 有 `--suite`：分母是套件用例总数，分子是 `paired ∩ suite`；
+- 无 `--suite`：分母是两边标注 id 的并集；
+- 只在一侧出现的标注会同时列在 warnings 里，并把 coverage 拉低；
+- coverage 只做信息展示，不参与退出码；门禁仍由 `--min-agreement` /
+  `--min-kappa` 决定；
+- JSON 输出带 `coverage: { paired, total, rate }`，没有可计分母时为 `null`。
 
 ## 怎么读 kappa
 
